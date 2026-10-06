@@ -8,6 +8,20 @@ EVA「活動限界」-style prompt-cache TTL countdown for [pi](https://github.c
  CACHE 限界  ⣤⣿⣿⣿⣿⣿⣿⣿⣿⣿│⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿ ●  04:52:64   NORMAL
 ```
 
+## Demo
+
+DeepSeek 12 h macro mode (undocumented, best-effort cache that empirically lives ≥ 12 h):
+
+![deepseek-12h](docs/deepseek-12h.gif)
+
+Full 5-minute lifecycle, compressed to ~12 s — five phases, final-second flash, then 限界突破:
+
+![five-phases](docs/five-phases.gif)
+
+Standby → first request lights it up:
+
+![standby-wake](docs/standby-wake.gif)
+
 ## Features
 
 - **One line, five states** (TTL split into fifths): `NORMAL` (green) → `注 CAUTION 意` (yellow) → `危 DANGER 険` (orange) → `緊 EMERGENCY 急` (red) → inverted-flash EMERGENCY (final fifth)
@@ -17,6 +31,11 @@ EVA「活動限界」-style prompt-cache TTL countdown for [pi](https://github.c
 - **Correct trigger semantics** (mirrors pi's built-in `cache-warmer`): the countdown resets when a request is *sent* to the provider (`before_provider_request`), not when a response reports cache usage; warming replays (`cache_warming_decision`) also reset it. TTL comes from `model.promptCache[short|long]` (`PI_CACHE_RETENTION=long` supported), falling back to 300 s.
 - **Polite UI citizen**: rendered via `setWidget`, never replaces your footer. Nothing is shown until the first request of the session.
 - Terminal bell alarm: once when entering the final fifth, then every second for the last 10 s.
+- **DeepSeek 12 h mode** (models with `provider`/`id` matching "deepseek", which don't declare `promptCache`):
+  ```
+   CACHE DEEPSEEK  ⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿│⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿  11:59:50   長 EXTERNAL 期   HIT 96%
+  ```
+  DeepSeek's prompt cache has no fixed TTL (empirically ≥ 12 h), so you get a blue 12-hour macro countdown with `HH:MM:SS`. The **HIT %** badge shows the real cache-hit rate of the last response, derived for free from `usage.prompt_cache_hit_tokens` (pi maps it to `cacheRead`). At 5 minutes left it switches seamlessly into the five-phase short logic.
 
 ## Install
 
@@ -37,4 +56,5 @@ pi install https://github.com/fishing-dev-sm/pi-famous-anime-cache-countdown
 
 - `preview.mjs` — true-color ANSI design preview (`node preview.mjs`)
 - `test-render.mjs` — render samples of every phase (`node test-render.mjs`)
+- `demo-frames.mjs` + `render_gif.py` — GIF pipeline: emits frames with the real render functions, rasterizes them with PIL (`node demo-frames.mjs | python3 render_gif.py docs/`)
 - `tui_design_eva.md` — design notes
