@@ -11,7 +11,6 @@
  *
  * 测试：pi --extension ./index.ts
  * 命令：/facc 配置菜单（第一个菜单 = widget 位置 aboveEditor/belowEditor）
- *       /eva_cache_countdown 切换 alarm（terminal bell）开关
  */
 
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
@@ -210,7 +209,6 @@ function contrastFg(bgHex: string): string {
 export default function (pi: ExtensionAPI) {
 	let lastCacheAt: number | null = null; // null = 尚未有任何请求（无 cache entry），待机不计时
 	let lastHitRate: number | null = null; // 上次响应 usage 的真实命中率（cacheRead/(cacheRead+input)）
-	let alarmEnabled = true;
 	let timer: ReturnType<typeof setInterval> | null = null;
 	let tuiRef: TUI | null = null;
 	let ctxRef: ExtensionContext | null = null;
@@ -224,29 +222,9 @@ export default function (pi: ExtensionAPI) {
 		}
 	};
 
-	// alarm 状态跟踪（在渲染 tick 里检测跨秒/跨段）
-	let prevSec = Math.ceil(FALLBACK_TTL_MS / 1000);
-
-	const bell = () => {
-		if (alarmEnabled) process.stdout.write("\x07");
-	};
-
+	// 渲染 tick：83ms 与 cc 末位 10ms 周期不整除 → 末位自然轮转、不显静止
+	// （100ms 会 10:1 相位锁死）；也与 ● 的 90ms 闪烁相位错开
 	const tick = () => {
-		if (lastCacheAt === null) {
-			tuiRef?.requestRender();
-			return;
-		}
-		const ttlMs = ttlMsOf(ctxRef?.model);
-		// alarm 边界 = 短逻辑 TTL 的 1/5（DeepSeek 用 300s 窗口→60s；12h 宏观段不响）
-		const boundarySec = Math.ceil((declaredTtlMs(ctxRef?.model) ?? FALLBACK_TTL_MS) / 5000);
-		const remainMs = Math.max(0, lastCacheAt + ttlMs - Date.now());
-		const sec = Math.ceil(remainMs / 1000);
-		if (sec !== prevSec) {
-			// 跨过 TTL/5 进入红闪段：响一次；最后 10s 每秒响一次
-			if (prevSec > boundarySec && sec <= boundarySec) bell();
-			else if (sec <= 10 && sec < prevSec) bell();
-			prevSec = sec;
-		}
 		tuiRef?.requestRender();
 	};
 
@@ -294,10 +272,9 @@ export default function (pi: ExtensionAPI) {
 	pi.on("session_start", (_ev, ctx) => {
 		ctxRef = ctx;
 		lastCacheAt = null; // 无请求不计时（逻辑与 cache-warmer "waiting for first request" 一致）
-		prevSec = Math.ceil(ttlMsOf(ctx.model) / 1000);
 		if (ctx.mode !== "tui") return;
 
-		// 幂等启动渲染/alarm tick。83ms：与 cc 末位 10ms 周期不整除 → 末位自然轮转、
+		// 幂等启动渲染 tick。83ms：与 cc 末位 10ms 周期不整除 → 末位自然轮转、
 		// 不显静止（100ms 会 10:1 相位锁死）；也与 ● 的 90ms 闪烁相位错开
 		stopTimer();
 		timer = setInterval(tick, 83);
@@ -309,7 +286,6 @@ export default function (pi: ExtensionAPI) {
 	// 触发本事件，另监听 cache_warming_decision 双保险（warm 刷新成功即延长 cache）。
 	const onCacheWrite = (ctx: ExtensionContext) => {
 		lastCacheAt = Date.now();
-		prevSec = Math.ceil(ttlMsOf(ctx.model) / 1000);
 		installWidget(ctx); // 首次请求才出现 widget；之前完全不显示
 	};
 	pi.on("before_provider_request", (_ev, ctx) => onCacheWrite(ctx));
@@ -363,11 +339,4 @@ export default function (pi: ExtensionAPI) {
 		},
 	});
 
-	pi.registerCommand("eva_cache_countdown", {
-		description: "Toggle facc alarm (terminal bell)",
-		handler: async (_args, ctx: ExtensionContext) => {
-			alarmEnabled = !alarmEnabled;
-			ctx.ui.notify(`facc alarm: ${alarmEnabled ? "ON ⚠警報" : "OFF"}`, "info");
-		},
-	});
 }

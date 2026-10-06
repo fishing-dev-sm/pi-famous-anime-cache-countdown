@@ -32,7 +32,6 @@ GIFs are produced from the real extension code (`demo-frames.mjs` frames, played
 - On expiry: `CACHE EXPIRED 限界突破  00:00:00  終 OVER 了` (all red)
 - **Correct trigger semantics** (mirrors pi's built-in `cache-warmer`): the countdown resets when a request is *sent* to the provider (`before_provider_request`), not when a response reports cache usage; warming replays (`cache_warming_decision`) also reset it. TTL comes from `model.promptCache[short|long]` (`PI_CACHE_RETENTION=long` supported), falling back to 300 s.
 - **Polite UI citizen**: rendered via `setWidget`, never replaces your footer. Nothing is shown until the first request of the session.
-- Terminal bell alarm: once when entering the final fifth, then every second for the last 10 s.
 - **DeepSeek 12 h mode** (models with `provider`/`id` matching "deepseek", which don't declare `promptCache`):
   ```
    CACHE DEEPSEEK  ⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿│⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿  11:59:50   長 EXTERNAL 期   HIT 96%
@@ -52,7 +51,6 @@ pi install https://github.com/fishing-dev-sm/pi-famous-anime-cache-countdown
 | Command | Action |
 |---|---|
 | `/facc` | Settings menu. First menu: widget placement `aboveEditor` / `belowEditor` (persisted to `~/.pi/agent/facc.json`, applied live) |
-| `/eva_cache_countdown` | Toggle the terminal-bell alarm |
 
 ## Development
 
