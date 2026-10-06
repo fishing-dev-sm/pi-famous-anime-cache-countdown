@@ -1,2 +1,6 @@
 node_modules
 refs
+
+# in-progress E2E work (parallel session)
+e2e_tui.py
+docs/e2e/
