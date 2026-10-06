@@ -1,13 +1,13 @@
 {
 	"name": "pi-facc",
 	"version": "0.2.1",
-	"description": "EVA「活動限界」style prompt-cache TTL countdown widget for pi (Anthropic 5min five-phase + DeepSeek 12h macro mode)",
+	"description": "Anime-style prompt-cache TTL countdown widget for pi (Anthropic 5min five-phase + DeepSeek 12h macro mode)",
 	"type": "module",
 	"main": "index.ts",
 	"license": "MIT",
-	"files": ["index.ts", "preview.mjs", "test-render.mjs", "tui_design_eva.md"],
+	"files": ["index.ts", "preview.mjs", "test-render.mjs", "tui_design.md"],
 	"repository": "https://github.com/fishing-dev-sm/pi-famous-anime-cache-countdown",
-	"keywords": ["pi", "pi-extension", "prompt-cache", "countdown", "eva", "deepseek", "anthropic", "tui"],
+	"keywords": ["pi", "pi-extension", "prompt-cache", "countdown", "deepseek", "anthropic", "tui"],
 	"pi": {
 		"extensions": ["./index.ts"]
 	}

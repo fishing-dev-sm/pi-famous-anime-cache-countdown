@@ -7,12 +7,10 @@
 - [PASS] A2 待机（请求前）不显示 CACHE 限界
 - [PASS] A3 k3 走 300s 短逻辑（绿 NORMAL 徽章）
 - [PASS] A4 k3 不显示蓝色 DEEPSEEK 宏观行 — 回归点：provider=kimi-coding,id=k3 不得判为 deepseek（#3b82f6 也被 swarm 徽章用，只查文本）
-- [PASS] A5 /eva_cache_countdown → alarm OFF
-- [PASS] A6 /eva_cache_countdown → alarm ON
-- [PASS] A7 /facc 打开配置菜单
-- [PASS] A8 /facc 切换到 aboveEditor
-- [PASS] A9 /facc 切回 belowEditor
-- [PASS] A10 facc.json 恢复 belowEditor
+- [PASS] A5 /facc 打开配置菜单
+- [PASS] A6 /facc 切换到 aboveEditor
+- [PASS] A7 /facc 切回 belowEditor
+- [PASS] A8 facc.json 恢复 belowEditor
 - [PASS] B1 deepseek 请求后出现宏观行
 - [PASS] B2 蓝色徽章配色 #3b82f6
 - [PASS] B3 HH:MM:SS 宏观时间（11:5x:xx）

@@ -3,7 +3,7 @@
  * demo-frames.mjs — 生成 GIF 演示帧（JSON Lines 输出到 stdout）
  *
  * 每行 = 一帧：{ "dur": ms, "lines": [ansi 字符串...] }
- * 用真实扩展代码 buildEvaLine / buildDeepseekLine 渲染，配合假的 pi 界面边框
+ * 用真实扩展代码 buildCountdownLine / buildDeepseekLine 渲染，配合假的 pi 界面边框
  * （标题行 / 编辑器行 / statusline 两行），供 render_gif.py 画成 GIF。
  *
  * 用法：node demo-frames.mjs > /tmp/frames.jsonl
@@ -15,7 +15,7 @@ const require = createRequire(`${PI_DIR}/node_modules/@earendil-works/pi-coding-
 const jiti = require("jiti")(import.meta.url, {
 	alias: { "@earendil-works/pi-tui": `${PI_DIR}/node_modules/@earendil-works/pi-tui/dist/index.js` },
 });
-const { buildEvaLine, buildDeepseekLine } = await jiti.import(new URL("./index.ts", import.meta.url).href);
+const { buildCountdownLine, buildDeepseekLine } = await jiti.import(new URL("./index.ts", import.meta.url).href);
 
 // theme.style 等价实现（真色）
 const style = (text, fg, bg) => {
@@ -50,18 +50,18 @@ let now = 0;
 // A: 300s → 15s 加速扫过（60 帧）：绿 NORMAL → 黄 CAUTION → 橙 DANGER → 红 EMERGENCY
 for (let i = 0; i < 60; i++) {
 	const remain = 300_000 - (285_000 * i) / 59;
-	scene(buildEvaLine(remain, 300_000, now, style));
+	scene(buildCountdownLine(remain, 300_000, now, style));
 	now += 100;
 }
 // B: 15s → 0（40 帧）：红闪 + spinner + 末 10s（alarm 区间）
 for (let i = 0; i < 40; i++) {
 	const remain = 15_000 - (15_000 * i) / 39;
-	scene(buildEvaLine(remain, 300_000, now, style));
+	scene(buildCountdownLine(remain, 300_000, now, style));
 	now += 100;
 }
 // C: 限界突破（25 帧定格）
 for (let i = 0; i < 25; i++) {
-	scene(buildEvaLine(-1, 300_000, now, style));
+	scene(buildCountdownLine(-1, 300_000, now, style));
 	now += 400;
 }
 
@@ -69,5 +69,5 @@ for (let i = 0; i < 25; i++) {
 out([dim("scene: standby-wake")], 1);
 const sceneBlank = () => out([TITLE, "", "", "", EDITOR, "", FOOT1, FOOT2]);
 for (let i = 0; i < 12; i++) sceneBlank(); // 待机：无倒计时行
-for (let i = 0; i < 12; i++) scene(buildEvaLine(299_000 - i * 1000, 300_000, now + i * 100, style)); // 发消息瞬间点亮
-for (let i = 0; i < 6; i++) scene(buildEvaLine(287_000 - i * 1000, 300_000, now + 1200 + i * 100, style));
+for (let i = 0; i < 12; i++) scene(buildCountdownLine(299_000 - i * 1000, 300_000, now + i * 100, style)); // 发消息瞬间点亮
+for (let i = 0; i < 6; i++) scene(buildCountdownLine(287_000 - i * 1000, 300_000, now + 1200 + i * 100, style));

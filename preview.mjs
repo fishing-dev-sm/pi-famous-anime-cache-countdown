@@ -1,6 +1,6 @@
 // preview.mjs — famous-anime-cache-countdown 一行版设计稿（真实 ANSI 颜色）
 // 运行：node preview.mjs
-// 与 index.ts 的 buildEvaLine / buildDeepseekLine 渲染逻辑逐字节一致（仅 style 换成 ANSI 输出）。
+// 与 index.ts 的 buildCountdownLine / buildDeepseekLine 渲染逻辑逐字节一致（仅 style 换成 ANSI 输出）。
 // 布局：[反白徽章 CACHE 限界] [20格 braille 条(垂直3级+中央tick)] [●] [反白 MM:SS:cc] [五段状态徽章]
 // 状态（TTL 五等分）：NORMAL → 注 CAUTION 意 → 危 DANGER 険 → 緊 EMERGENCY 急 →（末段反相闪烁）
 
@@ -43,8 +43,8 @@ const phaseOf = (sec, totalSec) => {
   return sec > 4 * b ? 0 : sec > 3 * b ? 1 : sec > 2 * b ? 2 : sec > b ? 3 : 4;
 };
 
-/** 与 index.ts buildEvaLine 一致（nowMs 控制 ●/末段/红闪的闪烁相位） */
-function buildEvaLine(remainMs, totalMs, nowMs) {
+/** 与 index.ts buildCountdownLine 一致（nowMs 控制 ●/末段/红闪的闪烁相位） */
+function buildCountdownLine(remainMs, totalMs, nowMs) {
   if (remainMs <= 0) {
     const P = PHASES[3];
     const titleBadge = style(" CACHE EXPIRED 限界突破 ", contrastFg(P.main), P.main);
@@ -131,12 +131,12 @@ function buildDeepseekLine(remainMs, totalMs, hitRate) {
 
 const NOW = 0; // 预览静态相位（● 亮、末段不闪、红闪=亮相）
 console.log("══ famous-anime-cache-countdown · 一行版 · 五状态（node preview.mjs）══");
-console.log(buildEvaLine(4 * 60 * 1000 + 40 * 1000, FALLBACK_TTL_MS, NOW)); // 绿 04:40:00  NORMAL
-console.log(buildEvaLine(3 * 60 * 1000 + 20 * 1000, FALLBACK_TTL_MS, NOW)); // 黄 03:20:00  注 CAUTION 意
-console.log(buildEvaLine(2 * 60 * 1000 + 30 * 1000, FALLBACK_TTL_MS, NOW)); // 橙 02:30:00  危 DANGER 険
-console.log(buildEvaLine(1 * 60 * 1000 + 30 * 1000, FALLBACK_TTL_MS, NOW)); // 红 01:30:00  緊 EMERGENCY 急
-console.log(buildEvaLine(30 * 1000, FALLBACK_TTL_MS, NOW));                  // 红闪 00:30:00 緊 EMERGENCY 急（NOW=0 亮相）
-console.log(buildEvaLine(0, FALLBACK_TTL_MS, NOW));                          // 过期 限界突破
+console.log(buildCountdownLine(4 * 60 * 1000 + 40 * 1000, FALLBACK_TTL_MS, NOW)); // 绿 04:40:00  NORMAL
+console.log(buildCountdownLine(3 * 60 * 1000 + 20 * 1000, FALLBACK_TTL_MS, NOW)); // 黄 03:20:00  注 CAUTION 意
+console.log(buildCountdownLine(2 * 60 * 1000 + 30 * 1000, FALLBACK_TTL_MS, NOW)); // 橙 02:30:00  危 DANGER 険
+console.log(buildCountdownLine(1 * 60 * 1000 + 30 * 1000, FALLBACK_TTL_MS, NOW)); // 红 01:30:00  緊 EMERGENCY 急
+console.log(buildCountdownLine(30 * 1000, FALLBACK_TTL_MS, NOW));                  // 红闪 00:30:00 緊 EMERGENCY 急（NOW=0 亮相）
+console.log(buildCountdownLine(0, FALLBACK_TTL_MS, NOW));                          // 过期 限界突破
 console.log("");
 console.log("══ DeepSeek 12h 宏观模式 ══");
 console.log(buildDeepseekLine(11 * 3600 * 1000 + 59 * 60 * 1000, 12 * 3600 * 1000, 0.99)); // 11:59:00 HIT 99%

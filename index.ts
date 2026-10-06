@@ -1,5 +1,5 @@
 /**
- * famous-anime-cache-countdown —— EVA「活動限界」Cache Countdown
+ * famous-anime-cache-countdown —— anime-style Cache Countdown
  *
  * 一行 widget 显示 Anthropic prompt cache TTL（5 分钟）倒计时，
  * 视觉与本目录 preview.mjs 的「一行简约版」一致：
@@ -86,7 +86,7 @@ export type StyleFn = (text: string, fgHex: string, bgHex?: string) => string;
  * 构建一行倒计时（纯函数，可测试）。
  * 布局：反白徽章 + 空格 + 20格braille条(中央tick) + 2空格 + 反白时间 + 空格 + 状态徽章
  */
-export function buildEvaLine(remainMs: number, totalMs: number, nowMs: number, style: StyleFn): string {
+export function buildCountdownLine(remainMs: number, totalMs: number, nowMs: number, style: StyleFn): string {
 	// 限界突破（过期）：红色定格 —— 徽章「限界突破」+ 空条 + 00:00:00 + 「终 OVER 了」
 	if (remainMs <= 0) {
 		const P = PHASES[3];
@@ -161,7 +161,7 @@ export function buildEvaLine(remainMs: number, totalMs: number, nowMs: number, s
  * DeepSeek 12h 宏观倒计时（纯函数）。布局：
  * [CACHE DEEPSEEK] + 20格braille条(12h 总量) + 反白 HH:MM:SS + [長 EXTERNAL 期] + [HIT 99%]
  * 无 ● 无 cc（秒级精度足够）；HIT% = 上次响应 usage 的真实命中率（cacheRead/(cacheRead+input)，
- * DeepSeek 免费返回）；remain ≤300s 不由本函数渲染（接入 buildEvaLine 短逻辑）。
+ * DeepSeek 免费返回）；remain ≤300s 不由本函数渲染（接入 buildCountdownLine 短逻辑）。
  */
 export function buildDeepseekLine(remainMs: number, totalMs: number, hitRate: number | null, style: StyleFn): string {
 	const P = DEEPSEEK_PHASE;
@@ -258,7 +258,7 @@ export default function (pi: ExtensionAPI) {
 					const line =
 						deepseek && remainMs > FALLBACK_TTL_MS
 							? buildDeepseekLine(remainMs, ttlMs, lastHitRate, style)
-							: buildEvaLine(remainMs, declared ?? FALLBACK_TTL_MS, now, style);
+							: buildCountdownLine(remainMs, declared ?? FALLBACK_TTL_MS, now, style);
 					return [truncateToWidth(line, width)];
 				},
 				invalidate() {},

@@ -1,6 +1,6 @@
 # pi-famous-anime-cache-countdown
 
-EVA「活動限界」-style prompt-cache TTL countdown for [pi](https://github.com/badlogic/lemerniss-coding-agent) — a single-line widget that shows how long your Anthropic prompt cache entry has left to live (default TTL 5 min).
+Anime-style prompt-cache TTL countdown for [pi](https://github.com/badlogic/lemerniss-coding-agent) — a single-line widget that shows how long your Anthropic prompt cache entry has left to live (default TTL 5 min).
 
 ![layout](https://img.shields.io/badge/layout-one%20line-green)
 
@@ -57,4 +57,4 @@ pi install https://github.com/fishing-dev-sm/pi-famous-anime-cache-countdown
 - `preview.mjs` — true-color ANSI design preview (`node preview.mjs`)
 - `test-render.mjs` — render samples of every phase (`node test-render.mjs`)
 - `demo-frames.mjs` + `player.mjs` + `record_gifs.sh` — GIF pipeline: emits frames with the real render functions, plays them in a real Alacritty on an Xvfb virtual display, records with ffmpeg (`./record_gifs.sh [scene ...]`)
-- `tui_design_eva.md` — design notes
+- `tui_design.md` — design notes

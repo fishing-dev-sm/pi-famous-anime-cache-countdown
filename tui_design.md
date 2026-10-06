@@ -1,7 +1,7 @@
 # famous-anime-cache-countdown — TUI 设计稿（最终版）
 
-> 一行 widget 致敬 EVA「活動限界」倒计时：Anthropic prompt cache TTL（5 分钟）倒计时，
-> 视觉与 `index.ts` 的 `buildEvaLine` / `buildDeepseekLine` 一致。真色预览：`node preview.mjs`。
+> 一行 widget 致敬一部经典动画的倒计时画面：Anthropic prompt cache TTL（5 分钟）倒计时，
+> 视觉与 `index.ts` 的 `buildCountdownLine` / `buildDeepseekLine` 一致。真色预览：`node preview.mjs`。
 
 ## 常量
 - 总长 `05:00:00`（对应 pi `CACHE_TTL_MS = 5*60*1000`，Anthropic 短保留）
@@ -23,7 +23,7 @@ DeepSeek 蓝系 `{ main:#3b82f6, hi:#60a5fa, sub:#1d4ed8, tick:#2563eb }`（冷�
 
 反白字色：`contrastFg(bgHex)` = WCAG 相对亮度（gamma 校正）选黑/白，`(lum+0.05)/0.05 >= 1.05/(lum+0.05) ? #000 : #fff`（`#ef4444` 红底 → 黑字）。同 pi-fleet `contrastTextColor`。
 
-## 一行版布局（buildEvaLine）
+## 一行版布局（buildCountdownLine）
 ```
  CACHE 限界  ⣀⣶⣿⣿⣿⣿⣿⣿⣿⣿│⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿ ●  04:40:00   NORMAL
  └反白徽章┘ └──20格 braille 条·中央tick──┘ └●┘ └反白时间┘ └状态徽章┘
@@ -78,6 +78,6 @@ DeepSeek 无 `promptCache` 声明、实测 cache ≥12h 存活（2026-10 TTL pro
 - **braille 垂直 3 级 `⣀⣤⣶⣿`**：比 ░█ 更密、比 5×3 大数字省行高，20 格 × 3 级 = 60 步分辨率，仍从右烧尽 + 中央 tick。
 - **从右烧尽 + 中央 tick**：一眼读「剩多少」与「距分水岭多远」；五段越界逐步变红，戏剧性强。
 - **五段等分（TTL/5）而非四段**：绿/黄/橙/红/红闪五档，末段（≤60s）反相闪烁 = 倒计时最后的压迫感；色号全部抄 pi-fleet 而非凭空拍板。
-- **红段才反相闪烁**：符合 EVA 情绪曲线，避免日常视觉疲劳（仅末段 60s 反相 + 末 20s 条尾闪烁）。
-- **音乐（BGM）/alarm 已删**：早期有 BGM/alarm 与 `/eva_cache_countdown` 命令占位，用户定稿「音乐暂时取消」后
+- **红段才反相闪烁**：符合紧迫情绪曲线，避免日常视觉疲劳（仅末段 60s 反相 + 末 20s 条尾闪烁）。
+- **音乐（BGM）/alarm 已删**：早期有 BGM/alarm 与一个占位命令，用户定稿「音乐暂时取消」后
   于 commit ffd9834 整体删除（alarmEnabled/prevSec/bell/命令注册），仅保留 `/facc`。

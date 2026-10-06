@@ -2,7 +2,7 @@
 """e2e_tui.py — pi TUI 真实终端 E2E 驱动（pty）
 
 三个场景：
-  A: k3 回归（不得误判 deepseek）+ 待机不显示 + /eva_cache_countdown + /facc 菜单
+  A: k3 回归（不得误判 deepseek）+ 待机不显示 + /facc 菜单
   B: DeepSeek 默认模型 12h 宏观模式（HH:MM:SS + 長 EXTERNAL 期 + HIT%）
   C: 25s 短 TTL 假模型，真实走完 绿→黄→橙→红→红闪→限界突破 全周期
 
@@ -144,21 +144,16 @@ def scenario_a():
         check("A4 k3 不显示蓝色 DEEPSEEK 宏观行", "CACHE DEEPSEEK" not in s.plain() and "EXTERNAL" not in s.plain(),
               "回归点：provider=kimi-coding,id=k3 不得判为 deepseek（#3b82f6 也被 swarm 徽章用，只查文本）")
 
-        s.send("/eva_cache_countdown\r", settle=1.5)
-        check("A5 /eva_cache_countdown → alarm OFF", s.wait_for("alarm: OFF", timeout=10))
-        s.send("/eva_cache_countdown\r", settle=1.5)
-        check("A6 /eva_cache_countdown → alarm ON", s.wait_for("alarm: ON", timeout=10))
-
         s.send("/facc\r", settle=1.0)
-        check("A7 /facc 打开配置菜单", s.wait_for("widget placement", timeout=10))
+        check("A5 /facc 打开配置菜单", s.wait_for("widget placement", timeout=10))
         s.send("\r", settle=1.5)  # 第一项 = aboveEditor
-        check("A8 /facc 切换到 aboveEditor", s.wait_for("placement → aboveEditor", timeout=10))
+        check("A6 /facc 切换到 aboveEditor", s.wait_for("placement → aboveEditor", timeout=10))
         s.send("/facc\r", settle=1.0)
         s.wait_for("widget placement", timeout=10)
         s.send("\x1b[B\r", settle=1.5)  # 第二项 = belowEditor
-        check("A9 /facc 切回 belowEditor", s.wait_for("placement → belowEditor", timeout=10))
+        check("A7 /facc 切回 belowEditor", s.wait_for("placement → belowEditor", timeout=10))
         cfg = json.load(open(f"{REAL_AGENT}/facc.json"))
-        check("A10 facc.json 恢复 belowEditor", cfg.get("placement") == "belowEditor")
+        check("A8 facc.json 恢复 belowEditor", cfg.get("placement") == "belowEditor")
     finally:
         s.close()
 
