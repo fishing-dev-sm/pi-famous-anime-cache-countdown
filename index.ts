@@ -5,6 +5,9 @@
  * 视觉与本目录 preview.mjs 的「一行简约版」一致：
  *   [反白徽章 CACHE 限界] [20 格 braille 条(垂直3级+中央tick)] [反白 MM:SS:cc] [五段状态徽章]
  *   状态（TTL 五等分）：NORMAL → 注 CAUTION 意 → 危 DANGER 険 → 緊 EMERGENCY 急 →（末段反相闪烁）
+ * DeepSeek 模型（provider/id 匹配，无 promptCache 声明、实测 cache 活 ≥12h）→ 12h 宏观倒计时：
+ *   [CACHE DEEPSEEK] [braille 条] [HH:MM:SS] [長 EXTERNAL 期] [HIT 99%]，剩余 ≤300s 时无缝接入上方五段短逻辑
+ * 其他无声明模型（qwen-local 等）→ 兜底 300s 短逻辑
  *
  * 测试：pi --extension ./index.ts
  * 命令：/facc 配置菜单（第一个菜单 = widget 位置 aboveEditor/belowEditor）
@@ -18,7 +21,8 @@ import { readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
-const FALLBACK_TTL_MS = 5 * 60 * 1000; // 模型未声明 promptCache 时兜底（Anthropic short retention = 300s）
+const FALLBACK_TTL_MS = 5 * 60 * 1000; // Anthropic short retention = 300s；也是 DeepSeek 模式最后 5 分钟接入短逻辑的窗口
+const DEEPSEEK_TTL_MS = 12 * 3600 * 1000; // 无 promptCache 声明的模型（DeepSeek）：实测 cache ≥12h 存活（2026-10 TTL probe）
 const GAUGE_CELLS = 20;
 const FACC_WIDGET_KEY = "facc";
 const CONFIG_PATH = join(homedir(), ".pi", "agent", "facc.json");
@@ -35,16 +39,27 @@ function loadPlacement(): Placement {
 	}
 }
 
-type PromptCacheModel = { promptCache?: { short?: number; long?: number } };
+type PromptCacheModel = { provider?: string; id?: string; promptCache?: { short?: number; long?: number } };
 
-/**
- * TTL 来源与 pi 内置 cache-warmer 一致（core/cache-warmer.ts getPromptCacheTtlMs）：
- * model.promptCache[retention]，retention = PI_CACHE_RETENTION=long ? "long" : "short"。
- */
-function ttlMsOf(model: PromptCacheModel | undefined | null): number {
+/** 仅限 DeepSeek（provider 或 id 匹配）——其 cache 无固定 TTL、实测 ≥12h；
+ *  其他无声明模型（qwen-local 等）不适用 12h 模式。 */
+function isDeepseekModel(model: PromptCacheModel | undefined | null): boolean {
+	const p = (model?.provider ?? "").toLowerCase();
+	const id = (model?.id ?? "").toLowerCase();
+	return p === "deepseek" || p.includes("deepseek") || id.startsWith("deepseek");
+}
+
+/** 模型自己声明的 TTL（无声明 → null，如 DeepSeek）。与 pi 内置 cache-warmer 的
+ *  getPromptCacheTtlMs 同逻辑：model.promptCache[retention]，retention = PI_CACHE_RETENTION=long ? "long" : "short"。 */
+function declaredTtlMs(model: PromptCacheModel | undefined | null): number | null {
 	const retention = process.env.PI_CACHE_RETENTION === "long" ? "long" : "short";
 	const sec = model?.promptCache?.[retention];
-	return typeof sec === "number" && sec > 0 ? sec * 1000 : FALLBACK_TTL_MS;
+	return typeof sec === "number" && sec > 0 ? sec * 1000 : null;
+}
+
+/** 有效 TTL：有声明用声明；DeepSeek 按实测 12h；其他无声明模型兜底 300s。 */
+function ttlMsOf(model: PromptCacheModel | undefined | null): number {
+	return declaredTtlMs(model) ?? (isDeepseekModel(model) ? DEEPSEEK_TTL_MS : FALLBACK_TTL_MS);
 }
 
 // 五段等分：总 TTL 均分 5 段（300s → 每 60s 一段），色号沿用 preview.mjs 调色板
@@ -57,6 +72,8 @@ const PHASES = [
 ];
 const DANGER_BG = "#b91c1c";
 const PULSE_GREEN = "#86efac"; // ● 运行指示：非常淡的绿色
+// DeepSeek 12h 宏观模式配色：蓝系（冷静/长期，与绿 NORMAL 区分）
+const DEEPSEEK_PHASE = { main: "#3b82f6", hi: "#60a5fa", sub: "#1d4ed8", tick: "#2563eb" };
 
 const phaseOf = (sec: number, totalSec: number) => {
 	const b = totalSec / 5;
@@ -141,6 +158,37 @@ export function buildEvaLine(remainMs: number, totalMs: number, nowMs: number, s
 	return `${titleBadge} ${bar} ${pulse} ${timeBadge} ${status}`;
 }
 
+/**
+ * DeepSeek 12h 宏观倒计时（纯函数）。布局：
+ * [CACHE DEEPSEEK] + 20格braille条(12h 总量) + 反白 HH:MM:SS + [長 EXTERNAL 期] + [HIT 99%]
+ * 无 ● 无 cc（秒级精度足够）；HIT% = 上次响应 usage 的真实命中率（cacheRead/(cacheRead+input)，
+ * DeepSeek 免费返回）；remain ≤300s 不由本函数渲染（接入 buildEvaLine 短逻辑）。
+ */
+export function buildDeepseekLine(remainMs: number, totalMs: number, hitRate: number | null, style: StyleFn): string {
+	const P = DEEPSEEK_PHASE;
+	const titleBadge = style(" CACHE DEEPSEEK ", contrastFg(P.main), P.main);
+
+	// 同短逻辑：每格垂直 3 级、从右往左填、中央 tick；总量 12h → 1 步 = 12min
+	const totalSec = totalMs / 1000;
+	const sec = Math.floor(Math.max(0, remainMs) / 1000);
+	const LEVELS = ["⣀", "⣤", "⣶", "⣿"];
+	const units = Math.round((Math.min(sec, totalSec) / totalSec) * GAUGE_CELLS * 3);
+	let bar = "";
+	for (let i = 0; i < GAUGE_CELLS; i++) {
+		const level = Math.max(0, Math.min(3, units - (GAUGE_CELLS - 1 - i) * 3));
+		bar += style(LEVELS[level], P.main);
+		if (i === GAUGE_CELLS / 2 - 1) bar += style("│", P.tick);
+	}
+
+	const hh = String(Math.floor(sec / 3600)).padStart(2, "0");
+	const mm = String(Math.floor((sec % 3600) / 60)).padStart(2, "0");
+	const ss = String(sec % 60).padStart(2, "0");
+	const timeBadge = style(` ${hh}:${mm}:${ss} `, contrastFg(P.main), P.main);
+	const status = style(" 長 EXTERNAL 期 ", contrastFg(P.main), P.main);
+	const hit = style(hitRate === null ? " HIT --% " : ` HIT ${Math.round(hitRate * 100)}% `, contrastFg(P.sub), P.sub);
+	return `${titleBadge} ${bar} ${timeBadge} ${status} ${hit}`;
+}
+
 function hexToRgb(hex: string): [number, number, number] {
 	return [parseInt(hex.slice(1, 3), 16), parseInt(hex.slice(3, 5), 16), parseInt(hex.slice(5, 7), 16)];
 }
@@ -161,6 +209,7 @@ function contrastFg(bgHex: string): string {
 
 export default function (pi: ExtensionAPI) {
 	let lastCacheAt: number | null = null; // null = 尚未有任何请求（无 cache entry），待机不计时
+	let lastHitRate: number | null = null; // 上次响应 usage 的真实命中率（cacheRead/(cacheRead+input)）
 	let alarmEnabled = true;
 	let timer: ReturnType<typeof setInterval> | null = null;
 	let tuiRef: TUI | null = null;
@@ -188,7 +237,8 @@ export default function (pi: ExtensionAPI) {
 			return;
 		}
 		const ttlMs = ttlMsOf(ctxRef?.model);
-		const boundarySec = Math.ceil(ttlMs / 5000); // 红闪段起点 = TTL 的 1/5（300s→60s）
+		// alarm 边界 = 短逻辑 TTL 的 1/5（DeepSeek 用 300s 窗口→60s；12h 宏观段不响）
+		const boundarySec = Math.ceil((declaredTtlMs(ctxRef?.model) ?? FALLBACK_TTL_MS) / 5000);
 		const remainMs = Math.max(0, lastCacheAt + ttlMs - Date.now());
 		const sec = Math.ceil(remainMs / 1000);
 		if (sec !== prevSec) {
@@ -222,9 +272,16 @@ export default function (pi: ExtensionAPI) {
 				render(width: number): string[] {
 					if (lastCacheAt === null) return []; // 待机不渲染（widget 只有首次请求后才安装，理论到不了这里）
 					const now = Date.now();
-					const ttlMs = ttlMsOf(ctxRef?.model);
+					const declared = declaredTtlMs(ctxRef?.model);
+					const deepseek = declared === null && isDeepseekModel(ctxRef?.model);
+					const ttlMs = declared ?? (deepseek ? DEEPSEEK_TTL_MS : FALLBACK_TTL_MS);
 					const remainMs = lastCacheAt + ttlMs - now;
-					return [truncateToWidth(buildEvaLine(remainMs, ttlMs, now, style), width)];
+					// DeepSeek 模式：>300s 走 12h 宏观行；≤300s 无缝接入五段短逻辑（窗口=300s）
+					const line =
+						deepseek && remainMs > FALLBACK_TTL_MS
+							? buildDeepseekLine(remainMs, ttlMs, lastHitRate, style)
+							: buildEvaLine(remainMs, declared ?? FALLBACK_TTL_MS, now, style);
+					return [truncateToWidth(line, width)];
 				},
 				invalidate() {},
 				dispose() {
@@ -258,6 +315,15 @@ export default function (pi: ExtensionAPI) {
 	pi.on("before_provider_request", (_ev, ctx) => onCacheWrite(ctx));
 	pi.on("cache_warming_decision", (ev, ctx) => {
 		if (ev.action === "warm") onCacheWrite(ctx);
+	});
+
+	// HIT% 数据源：响应 usage 免费带回（DeepSeek prompt_cache_hit_tokens → cacheRead；
+	// pi-ai openai-completions: input = prompt_tokens - cacheRead - cacheWrite）
+	pi.on("message_end", (ev) => {
+		const u = (ev.message as { usage?: { input?: number; cacheRead?: number } }).usage;
+		if (u && typeof u.input === "number" && typeof u.cacheRead === "number" && u.input + u.cacheRead > 0) {
+			lastHitRate = u.cacheRead / (u.input + u.cacheRead);
+		}
 	});
 
 	pi.on("session_shutdown", () => {

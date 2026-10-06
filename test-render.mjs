@@ -4,7 +4,7 @@ import { createRequire } from "node:module";
 const require = createRequire("/home/sim/.pi/agent/install/releases/1.0.4/node_modules/");
 const { createJiti } = require("jiti");
 const jiti = createJiti(import.meta.url);
-const { buildEvaLine } = await jiti.import(new URL("./index.ts", import.meta.url).href);
+const { buildEvaLine, buildDeepseekLine } = await jiti.import(new URL("./index.ts", import.meta.url).href);
 
 const RESET = "\x1b[0m";
 // 与 preview.mjs 相同的真色上色（fg 始终输出；bg 可选）
@@ -28,6 +28,15 @@ const cases = [
 ];
 for (const c of cases) console.log(buildEvaLine(c.remain, 300_000, c.now, style), " ", c.label);
 
+// DeepSeek 12h 宏观模式（remain > 300s 时；hitRate 为 null 或上次响应真实命中率）
+const dsCases = [
+	{ remain: 12 * 3600 * 1000, hit: null, label: "满 12:00:00 長 EXTERNAL 期 HIT --%（尚无响应数据）" },
+	{ remain: 6 * 3600 * 1000 + 37 * 60 * 1000, hit: 0.956, label: "半 06:37:00 HIT 96%" },
+	{ remain: 5 * 60 * 1000 + 30_000, hit: 0.99, label: "临界 00:05:30（>300s 仍宏观行）HIT 99%" },
+];
+for (const c of dsCases) console.log(buildDeepseekLine(c.remain, 12 * 3600 * 1000, c.hit, style), " ", c.label);
+console.log(buildEvaLine(299_000, 300_000, 0, style), " ", "DeepSeek ≤300s → 接入短逻辑（绿 04:59:00 NORMAL）");
+
 // 变体B：无进度条，纯文字版（贴用户草图）
 {
 	const P = { main: "#ef4444" };
@@ -50,3 +59,4 @@ function charW(c) {
 }
 const vw = (s) => { let w = 0; for (const c of s.replace(/\x1b\[[0-9;]*m/g, "")) w += charW(c); return w; };
 console.log("\nvisible width:", cases.map((c) => vw(buildEvaLine(c.remain, 300_000, c.now, style))).join(", "));
+console.log("deepseek width:", dsCases.map((c) => vw(buildDeepseekLine(c.remain, 12 * 3600 * 1000, c.hit, style))).join(", "));

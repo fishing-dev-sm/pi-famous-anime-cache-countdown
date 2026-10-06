@@ -21,6 +21,8 @@ EVA「活動限界」-style prompt-cache TTL countdown for [pi](https://github.c
 ## Install
 
 ```bash
+pi install npm:pi-facc
+# or from source:
 pi install https://github.com/fishing-dev-sm/pi-famous-anime-cache-countdown
 ```
 

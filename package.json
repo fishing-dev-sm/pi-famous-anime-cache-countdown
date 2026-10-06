@@ -1,9 +1,12 @@
 {
-	"name": "famous-anime-cache-countdown",
-	"version": "0.1.0",
-	"description": "EVA「活動限界」style prompt-cache TTL countdown footer for pi",
+	"name": "pi-facc",
+	"version": "0.2.0",
+	"description": "EVA「活動限界」style prompt-cache TTL countdown widget for pi (Anthropic 5min five-phase + DeepSeek 12h macro mode)",
 	"type": "module",
 	"main": "index.ts",
+	"license": "MIT",
+	"repository": "https://github.com/fishing-dev-sm/pi-famous-anime-cache-countdown",
+	"keywords": ["pi", "pi-extension", "prompt-cache", "countdown", "eva", "deepseek", "anthropic", "tui"],
 	"pi": {
 		"extensions": ["./index.ts"]
 	}
