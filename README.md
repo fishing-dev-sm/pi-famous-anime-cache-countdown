@@ -1,4 +1,4 @@
-# pi-famous-anime-cache-countdown
+# pi-flcc
 
 Anime-style prompt-cache TTL countdown for [pi](https://github.com/badlogic/lemerniss-coding-agent) — a single-line widget that shows how long your Anthropic prompt cache entry has left to live (default TTL 5 min).
 

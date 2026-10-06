@@ -1,11 +1,11 @@
 {
-	"name": "pi-facc",
-	"version": "0.2.1",
+	"name": "pi-flcc",
+	"version": "1.0.0",
 	"description": "Anime-style prompt-cache TTL countdown widget for pi (Anthropic 5min five-phase + DeepSeek 12h macro mode)",
 	"type": "module",
 	"main": "index.ts",
 	"license": "MIT",
-	"files": ["index.ts", "preview.mjs", "test-render.mjs", "tui_design.md"],
+	"files": ["index.ts", "preview.mjs", "test-render.mjs", "tui_design.md", "docs/*.gif"],
 	"repository": "https://github.com/fishing-dev-sm/pi-famous-anime-cache-countdown",
 	"keywords": ["pi", "pi-extension", "prompt-cache", "countdown", "deepseek", "anthropic", "tui"],
 	"pi": {
