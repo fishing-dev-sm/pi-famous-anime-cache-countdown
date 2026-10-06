@@ -1,5 +1,11 @@
 # pi-flcc
 
+<p align="center">
+  <a href="README.md"><strong>English</strong></a> |
+  <a href="README.zh-CN.md">简体中文</a> |
+  <a href="README.ja.md">日本語</a>
+</p>
+
 Anime-style prompt-cache TTL countdown for [pi](https://github.com/badlogic/lemerniss-coding-agent) — a single-line widget that shows how long your Anthropic prompt cache entry has left to live (default TTL 5 min).
 
 ![layout](https://img.shields.io/badge/layout-one%20line-green)
@@ -41,7 +47,7 @@ GIFs are produced from the real extension code (`demo-frames.mjs` frames, played
 ## Install
 
 ```bash
-pi install npm:pi-facc
+pi install npm:pi-flcc
 # or from source:
 pi install https://github.com/fishing-dev-sm/pi-famous-anime-cache-countdown
 ```
