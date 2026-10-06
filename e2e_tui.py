@@ -87,6 +87,14 @@ class PtySession:
     def count(self, needle):
         return self.text().count(needle)
 
+    def resize(self, cols, rows=30):
+        """动态改终端宽度（TIOCSWINSZ + 手动 SIGWINCH——子进程非该 pty 会话首进程，内核不代发）"""
+        import signal
+        fcntl.ioctl(self.master, termios.TIOCSWINSZ, struct.pack("HHHH", rows, cols, 0, 0))
+        self.proc.send_signal(signal.SIGWINCH)
+        time.sleep(1.0)
+        self.drain()
+
     def close(self):
         try:
             self.proc.terminate()
@@ -129,6 +137,8 @@ def boot(argv_extra, env, log_name):
 # ── 场景 A：k3 回归 + 待机 + 斜杠命令 ──────────────────────────────────────
 def scenario_a():
     print("scenario A: k3 regression + standby + commands")
+    # 起点确定性：placement 残留会导致菜单选中当前项而变成 unchanged 空操作
+    json.dump({"placement": "belowEditor"}, open(f"{REAL_AGENT}/facc.json", "w"))
     s = boot(["--model", "kimi-coding/k3"], {}, "a-k3.log")
     try:
         mark = len(s.buf)
@@ -147,13 +157,38 @@ def scenario_a():
         s.send("/facc\r", settle=1.0)
         check("A5 /facc 打开配置菜单", s.wait_for("widget placement", timeout=10))
         s.send("\r", settle=1.5)  # 第一项 = aboveEditor
-        check("A6 /facc 切换到 aboveEditor", s.wait_for("placement → aboveEditor", timeout=10))
+        time.sleep(1.5); s.drain()
+        cfg = json.load(open(f"{REAL_AGENT}/facc.json"))
+        check("A6 /facc 切换到 aboveEditor", cfg.get("placement") == "aboveEditor")
         s.send("/facc\r", settle=1.0)
         s.wait_for("widget placement", timeout=10)
         s.send("\x1b[B\r", settle=1.5)  # 第二项 = belowEditor
-        check("A7 /facc 切回 belowEditor", s.wait_for("placement → belowEditor", timeout=10))
+        time.sleep(1.5); s.drain()
+        cfg = json.load(open(f"{REAL_AGENT}/facc.json"))
+        check("A7 /facc 切回 belowEditor", cfg.get("placement") == "belowEditor")
         cfg = json.load(open(f"{REAL_AGENT}/facc.json"))
         check("A8 facc.json 恢复 belowEditor", cfg.get("placement") == "belowEditor")
+
+        # footer 位置：setStatus 进入 footer 体系（本环境装着 pi-slim-footer → 插件行透传自带 ANSI）
+        s.send("/facc\r", settle=1.0)
+        s.wait_for("widget placement", timeout=10)
+        s.send("\x1b[B\x1b[B\r", settle=1.5)  # 第三项 = footer
+        check("A9 /facc 切换到 footer", s.wait_for("placement → footer", timeout=10))
+        mark = len(s.buf)
+        time.sleep(2); s.drain()
+        t = s.buf[mark:].decode("utf-8", errors="replace")
+        check("A10 footer 模式：倒计时行经 setStatus 出现在 footer 体系（真色透传）",
+              "CACHE 限界" in re.sub(r"\x1b\[[0-9;?]*[a-zA-Z]", "", t) and GREEN_BG in t)
+        s.send("/facc\r", settle=1.0)
+        s.wait_for("widget placement", timeout=10)
+        s.send("\x1b[B\r", settle=1.5)  # 第二项 = belowEditor
+        check("A11 /facc 从 footer 切回 belowEditor", s.wait_for("placement → belowEditor", timeout=10))
+        mark = len(s.buf)
+        time.sleep(2); s.drain()
+        t = re.sub(r"\x1b\[[0-9;?]*[a-zA-Z]", "", s.buf[mark:].decode("utf-8", errors="replace"))
+        check("A12 切回后 widget 档位渲染恢复", "CACHE 限界" in t)
+        cfg = json.load(open(f"{REAL_AGENT}/facc.json"))
+        check("A13 facc.json 恢复 belowEditor", cfg.get("placement") == "belowEditor")
     finally:
         s.close()
 
@@ -244,8 +279,50 @@ def scenario_c():
         shutil.rmtree(tmp, ignore_errors=True)
 
 
-SCENARIOS = {"a": scenario_a, "b": scenario_b, "c": scenario_c}
-which = sys.argv[1:] or ["a", "b", "c"]
+# ── 场景 D：窄宽度自适应缩略档（tui_compact_design.md v3）────────────────────
+TICK_RE = r"[\u2800-\u28ff]│"   # braille 条中央 tick（仅完整版有）
+CC_RE = r"\d\d:\d\d:\d\d"        # MM:SS:cc（L3 砍 cc）
+
+def scenario_d():
+    print("scenario D: narrow-width adaptive tiers (k3, 300s green)")
+    s = boot(["--model", "kimi-coding/k3"], {}, "d-tiers.log")
+    # pi TUI 用光标定位重绘（无 \r\n 分行），滚动缓冲会永久保留旧帧——
+    # 每次 resize 后只检查缓冲区增量，否则旧完整版帧会造成误判
+    def fresh_plain(mark):
+        return re.sub(r"\x1b\[[0-9;?]*[a-zA-Z]", "", s.buf[mark:].decode("utf-8", errors="replace"))
+    try:
+        s.send("say ok\r")
+        ok = s.wait_for("CACHE 限界", timeout=90)
+        time.sleep(2); s.drain()
+        mark = len(s.buf)
+        s.drain(max_s=1.0, quiet=0.6)  # 等一帧新重绘进入增量（83ms tick 持续 requestRender）
+        t = fresh_plain(mark)
+        check("D1 100列=完整版（中央 tick + 全长 NORMAL）", ok and re.search(TICK_RE, t) and " NORMAL " in t)
+
+        mark = len(s.buf); s.resize(60)
+        t = fresh_plain(mark)
+        check("D2 60列=L1（丢 tick，●/cc/全长状态保留）",
+              not re.search(TICK_RE, t) and " NORMAL " in t and re.search(CC_RE, t) and "●" in t)
+
+        mark = len(s.buf); s.resize(48)
+        t = fresh_plain(mark)
+        check("D3 48列=L2（盲文→4，状态中英取短 NORM，●/cc 保留）",
+              "NORMAL" not in t and " NORM " in t and re.search(CC_RE, t) and "●" in t)
+
+        mark = len(s.buf); s.resize(30)
+        t = fresh_plain(mark)
+        check("D4 30列=L3（徽章砍 限界、砍 cc，● 仍在=铁律，绿底仍在）",
+              "CACHE 限界" not in t and not re.search(CC_RE, t) and "●" in t and GREEN_BG in s.buf[mark:].decode("utf-8", errors="replace"))
+
+        mark = len(s.buf); s.resize(100)
+        t = fresh_plain(mark)
+        check("D5 回到100列=完整版恢复（tick + NORMAL）", bool(re.search(TICK_RE, t)) and " NORMAL " in t)
+    finally:
+        s.close()
+
+
+SCENARIOS = {"a": scenario_a, "b": scenario_b, "c": scenario_c, "d": scenario_d}
+which = sys.argv[1:] or ["a", "b", "c", "d"]
 for w in which:
     try:
         SCENARIOS[w]()

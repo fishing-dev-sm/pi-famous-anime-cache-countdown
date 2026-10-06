@@ -1,6 +1,6 @@
 # facc E2E report
 
-- date: 2026-10-06 19:51:08
+- date: 2026-10-06 22:24:00
 - pi: 1.0.4
 
 - [PASS] A1 k3 首次请求后出现倒计时
@@ -11,6 +11,11 @@
 - [PASS] A6 /facc 切换到 aboveEditor
 - [PASS] A7 /facc 切回 belowEditor
 - [PASS] A8 facc.json 恢复 belowEditor
+- [PASS] A9 /facc 切换到 footer
+- [PASS] A10 footer 模式：倒计时行经 setStatus 出现在 footer 体系（真色透传）
+- [PASS] A11 /facc 从 footer 切回 belowEditor
+- [PASS] A12 切回后 widget 档位渲染恢复
+- [PASS] A13 facc.json 恢复 belowEditor
 - [PASS] B1 deepseek 请求后出现宏观行
 - [PASS] B2 蓝色徽章配色 #3b82f6
 - [PASS] B3 HH:MM:SS 宏观时间（11:5x:xx）
@@ -23,3 +28,8 @@
 - [PASS] C4 过期定格 CACHE EXPIRED 限界突破
 - [PASS] C5 过期时间 ~25s（20~35s 区间） — expired at 24.6s
 - [PASS] C6 EMERGENCY 段出现 #b91c1c 深红徽章
+- [PASS] D1 100列=完整版（中央 tick + 全长 NORMAL）
+- [PASS] D2 60列=L1（丢 tick，●/cc/全长状态保留）
+- [PASS] D3 48列=L2（盲文→4，状态中英取短 NORM，●/cc 保留）
+- [PASS] D4 30列=L3（徽章砍 限界、砍 cc，● 仍在=铁律，绿底仍在）
+- [PASS] D5 回到100列=完整版恢复（tick + NORMAL）

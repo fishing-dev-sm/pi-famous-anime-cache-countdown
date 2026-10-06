@@ -37,7 +37,8 @@ GIF は実拡張コードから生成されます（`demo-frames.mjs` でフレ�
 - `MM:SS:cc` カウントダウン + ソフトに脈打つ `●`。百分秒は自然に回転（83ms レンダーティック、10ms の桁周期と非整除）
 - 期限切れ時：`CACHE EXPIRED 限界突破  00:00:00  終 OVER 了`（すべて赤）
 - **正しいトリガー意味論**（pi 内蔵 `cache-warmer` に一致）：カウントダウンはリクエストがプロバイダへ*送信された*時（`before_provider_request`）にリセットされ、レスポンスがキャッシュ使用を報告した時ではありません。ウォーミング再生（`cache_warming_decision`）もリセットします。TTL は `model.promptCache[short|long]` から取得（`PI_CACHE_RETENTION=long` 対応）、フォールバック 300 秒。
-- **行儀の良い UI**：`setWidget` でレンダリングし、フッターを置き換えません。セッション最初のリクエストまで何も表示しません。
+- **行儀の良い UI**：`setWidget` でレンダリングし、フッターを乗っ取りません。`footer` 位置も選択可能——`setStatus` 経由でフッター体系（例：pi-slim-footer のプラグイン行）に入り、フッター自体は置き換えません。セッション最初のリクエストまで何も表示しません。
+- **狭い端末に自适应する 3 段階の縮略モード**（縮小時は列を落とし、決して切断しない。盲文セルを常に真っ先に削り、`●` は永不丢）：L1 ≤66 セル（中央ティック除去 + 盲文 20→10）、L2 ≤50 セル（盲文→4 + 状態バッジ短縮 ` 注 CAUT 意 `）、L3 ≤26 セル（盲文→2 + cc 除去）。閾値は `tui_compact_design.md`、トゥルーカラー preview は `node preview-compact.mjs`。
 - **DeepSeek 12 時間モード**（`provider`/`id` が "deepseek" に一致し、`promptCache` を宣言しないモデル）：
   ```
    CACHE DEEPSEEK  ⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿│⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿  11:59:50   長 EXTERNAL 期   HIT 96%
@@ -56,11 +57,12 @@ pi install https://github.com/fishing-dev-sm/pi-famous-anime-cache-countdown
 
 | コマンド | 動作 |
 |---|---|
-| `/facc` | 設定メニュー。最初のメニュー：ウィジェット位置 `aboveEditor` / `belowEditor`（`~/.pi/agent/facc.json` に永続化、ライブ反映） |
+| `/facc` | 設定メニュー。最初のメニュー：ウィジェット位置 `aboveEditor` / `belowEditor` / `footer`（`~/.pi/agent/facc.json` に永続化、ライブ反映） |
 
 ## 開発
 
 - `preview.mjs` —— トゥルーカラー ANSI デザインプレビュー（`node preview.mjs`）
+- `preview-compact.mjs` —— 3 段階縮略モードのトゥルーカラー preview（`node preview-compact.mjs`）
 - `test-render.mjs` —— 各フェーズのレンダリングサンプル（`node test-render.mjs`）
 - `demo-frames.mjs` + `player.mjs` + `record_gifs.sh` —— GIF パイプライン：実レンダリング関数でフレーム出力、Xvfb 仮想ディスプレイ上の実 Alacritty で再生、ffmpeg で録画（`./record_gifs.sh [scene ...]`）
-- `tui_design.md` —— デザインノート
+- `tui_design.md` —— デザインノート；`tui_compact_design.md` —— 縮略モード設計稿

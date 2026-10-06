@@ -37,7 +37,8 @@ GIFs are produced from the real extension code (`demo-frames.mjs` frames, played
 - `MM:SS:cc` countdown with a soft-pulsing `●`; the centiseconds roll naturally (83 ms render tick, non-divisible by the 10 ms digit period)
 - On expiry: `CACHE EXPIRED 限界突破  00:00:00  終 OVER 了` (all red)
 - **Correct trigger semantics** (mirrors pi's built-in `cache-warmer`): the countdown resets when a request is *sent* to the provider (`before_provider_request`), not when a response reports cache usage; warming replays (`cache_warming_decision`) also reset it. TTL comes from `model.promptCache[short|long]` (`PI_CACHE_RETENTION=long` supported), falling back to 300 s.
-- **Polite UI citizen**: rendered via `setWidget`, never replaces your footer. Nothing is shown until the first request of the session.
+- **Polite UI citizen**: rendered via `setWidget`, never takes over your footer; optional `footer` placement routes through `setStatus` into the footer's extension-status system (e.g. a pi-slim-footer plugin line) instead of replacing it. Nothing is shown until the first request of the session.
+- **Three width-adaptive compact tiers** (drop columns on shrink, never truncate; braille cells always go first, `●` never dropped): L1 ≤66 cells (central tick dropped, gauge 20→10), L2 ≤50 cells (gauge→4 + shortened bilingual status ` 注 CAUT 意 `), L3 ≤26 cells (gauge→2 + centiseconds dropped). Thresholds in `tui_compact_design.md`, true-color preview `node preview-compact.mjs`.
 - **DeepSeek 12 h mode** (models with `provider`/`id` matching "deepseek", which don't declare `promptCache`):
   ```
    CACHE DEEPSEEK  ⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿│⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿  11:59:50   長 EXTERNAL 期   HIT 96%
@@ -56,11 +57,12 @@ pi install https://github.com/fishing-dev-sm/pi-famous-anime-cache-countdown
 
 | Command | Action |
 |---|---|
-| `/facc` | Settings menu. First menu: widget placement `aboveEditor` / `belowEditor` (persisted to `~/.pi/agent/facc.json`, applied live) |
+| `/facc` | Settings menu. First menu: widget placement `aboveEditor` / `belowEditor` / `footer` (persisted to `~/.pi/agent/facc.json`, applied live) |
 
 ## Development
 
 - `preview.mjs` — true-color ANSI design preview (`node preview.mjs`)
+- `preview-compact.mjs` — true-color preview of the three compact tiers (`node preview-compact.mjs`)
 - `test-render.mjs` — render samples of every phase (`node test-render.mjs`)
 - `demo-frames.mjs` + `player.mjs` + `record_gifs.sh` — GIF pipeline: emits frames with the real render functions, plays them in a real Alacritty on an Xvfb virtual display, records with ffmpeg (`./record_gifs.sh [scene ...]`)
-- `tui_design.md` — design notes
+- `tui_design.md` — design notes; `tui_compact_design.md` — compact-tier design doc

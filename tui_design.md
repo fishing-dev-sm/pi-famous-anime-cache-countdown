@@ -1,5 +1,8 @@
 # famous-anime-cache-countdown — TUI 设计稿（最终版）
 
+> 缩略模式（窄宽度自适应三档）见 `tui_compact_design.md`（v3 定稿，真彩预览 `node preview-compact.mjs`）。
+> 位置可选 aboveEditor/belowEditor/footer（footer = setStatus 进入 footer 体系，不接管）。
+
 > 一行 widget 致敬一部经典动画的倒计时画面：Anthropic prompt cache TTL（5 分钟）倒计时，
 > 视觉与 `index.ts` 的 `buildCountdownLine` / `buildDeepseekLine` 一致。真色预览：`node preview.mjs`。
 

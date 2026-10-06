@@ -37,7 +37,8 @@ GIF 由真实扩展代码生成（`demo-frames.mjs` 出帧，经 `player.mjs` �
 - `MM:SS:cc` 倒计时 + 柔和脉冲 `●`；百分秒自然滚动（83ms 渲染 tick，与 10ms 数字周期不整除）
 - 过期时：`CACHE EXPIRED 限界突破  00:00:00  終 OVER 了`（全红）
 - **正确的触发语义**（对齐 pi 内置 `cache-warmer`）：倒计时在请求*发出*时（`before_provider_request`）重置，而不是在响应报告缓存使用时；保活重放（`cache_warming_decision`）同样会重置。TTL 取自 `model.promptCache[short|long]`（支持 `PI_CACHE_RETENTION=long`），兜底 300 秒。
-- **礼貌的 UI 公民**：通过 `setWidget` 渲染，从不替换你的 footer；会话的首次请求之前什么都不显示。
+- **礼貌的 UI 公民**：通过 `setWidget` 渲染，从不接管你的 footer；也可选 `footer` 位置——经 `setStatus` 进入 footer 体系（如 pi-slim-footer 插件行），不替换 footer 本身。会话的首次请求之前什么都不显示。
+- **窄终端自适应三档缩略**（收窄丢列、永不截断；盲文格数永远最先砍，`●` 永不丢）：L1 ≤66 格（丢中央刻度 + 盲文 20→10）、L2 ≤50 格（盲文→4 + 状态中英取短 ` 注 CAUT 意 `）、L3 ≤26 格（盲文→2 + 砍 cc）。阈值见 `tui_compact_design.md`，真彩预览 `node preview-compact.mjs`。
 - **DeepSeek 12 小时模式**（`provider`/`id` 匹配 "deepseek"、未声明 `promptCache` 的模型）：
   ```
    CACHE DEEPSEEK  ⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿│⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿  11:59:50   長 EXTERNAL 期   HIT 96%
@@ -56,11 +57,12 @@ pi install https://github.com/fishing-dev-sm/pi-famous-anime-cache-countdown
 
 | 命令 | 作用 |
 |---|---|
-| `/facc` | 设置菜单。第一个菜单：widget 位置 `aboveEditor` / `belowEditor`（持久化到 `~/.pi/agent/facc.json`，实时生效） |
+| `/facc` | 设置菜单。第一个菜单：widget 位置 `aboveEditor` / `belowEditor` / `footer`（持久化到 `~/.pi/agent/facc.json`，实时生效） |
 
 ## 开发
 
 - `preview.mjs` —— 真彩 ANSI 设计预览（`node preview.mjs`）
+- `preview-compact.mjs` —— 三档缩略模式真彩预览（`node preview-compact.mjs`）
 - `test-render.mjs` —— 渲染每个阶段的样例（`node test-render.mjs`）
 - `demo-frames.mjs` + `player.mjs` + `record_gifs.sh` —— GIF 管线：用真实渲染函数出帧，在 Xvfb 虚拟屏上的真实 Alacritty 中播放，用 ffmpeg 录制（`./record_gifs.sh [scene ...]`）
-- `tui_design.md` —— 设计笔记
+- `tui_design.md` —— 设计笔记；`tui_compact_design.md` —— 缩略模式设计稿
