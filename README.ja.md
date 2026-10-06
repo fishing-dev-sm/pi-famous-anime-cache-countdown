@@ -6,7 +6,7 @@
   <a href="README.ja.md"><strong>日本語</strong></a>
 </p>
 
-アニメ風のプロンプトキャッシュ TTL カウントダウン。[pi](https://github.com/badlogic/lemerniss-coding-agent) 向けの 1 行ウィジェットで、Anthropic のプロンプトキャッシュエントリがあとどれくらい生きているかを表示します（デフォルト TTL 5 分）。
+アニメ風のプロンプトキャッシュ TTL カウントダウン。[pi](https://github.com/earendil-works/pi) 向けの 1 行ウィジェットで、Anthropic のプロンプトキャッシュエントリがあとどれくらい生きているかを表示します（デフォルト TTL 5 分）。
 
 ![layout](https://img.shields.io/badge/layout-one%20line-green)
 

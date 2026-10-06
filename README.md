@@ -6,7 +6,7 @@
   <a href="README.ja.md">日本語</a>
 </p>
 
-Anime-style prompt-cache TTL countdown for [pi](https://github.com/badlogic/lemerniss-coding-agent) — a single-line widget that shows how long your Anthropic prompt cache entry has left to live (default TTL 5 min).
+Anime-style prompt-cache TTL countdown for [pi](https://github.com/earendil-works/pi) — a single-line widget that shows how long your Anthropic prompt cache entry has left to live (default TTL 5 min).
 
 ![layout](https://img.shields.io/badge/layout-one%20line-green)
 

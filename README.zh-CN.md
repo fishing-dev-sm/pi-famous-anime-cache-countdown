@@ -6,7 +6,7 @@
   <a href="README.ja.md">日本語</a>
 </p>
 
-动画风格的 prompt-cache TTL 倒计时，用于 [pi](https://github.com/badlogic/lemerniss-coding-agent) —— 一个单行 widget，显示你的 Anthropic 提示词缓存条目还剩多久失效（默认 TTL 5 分钟）。
+动画风格的 prompt-cache TTL 倒计时，用于 [pi](https://github.com/earendil-works/pi) —— 一个单行 widget，显示你的 Anthropic 提示词缓存条目还剩多久失效（默认 TTL 5 分钟）。
 
 ![layout](https://img.shields.io/badge/layout-one%20line-green)
 
