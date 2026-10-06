@@ -25,9 +25,9 @@ const style = (text, fg, bg) => {
 	return s + text + "\x1b[0m";
 };
 
-const dim = (t) => `\x1b[38;2;139;148;158m${t}\x1b[0m`;
+const dim = (t) => `\x1b[38;2;88;91;112m${t}\x1b[0m`; // Alacritty bright black #585B70
 const TITLE = dim(" pi · famous-anime-cache-countdown · (deepseek) deepseek-v4-pro");
-const EDITOR = `\x1b[38;2;88;166;255m❯\x1b[0m `;
+const EDITOR = `\x1b[38;2;137;180;250m❯\x1b[0m `; // Alacritty bright blue #89B4FA
 const FOOT1 = dim("famous-anime-cache-countdown │ main [0] │ $0.013");
 const FOOT2 = dim("CPU 8% · MEM 31% · 20k tokens");
 

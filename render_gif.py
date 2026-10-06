@@ -10,13 +10,13 @@ from pathlib import Path
 from PIL import Image, ImageDraw, ImageFont
 from fontTools.ttLib import TTFont, TTCollection
 
-MONO = "/usr/share/fonts/TTF/JetBrainsMonoNerdFontMono-Regular.ttf"
+MONO = "/usr/share/fonts/OTF/HurmitNerdFontMono-Regular.otf"
 CJK = "/usr/share/fonts/noto-cjk/NotoSansCJK-Regular.ttc"
 BRAILLE = "/usr/share/fonts/gnu-free/FreeMono.otf"
 SIZE = 16
 CELL_PAD_Y = 5
-BG = (13, 17, 23)          # GitHub dark #0d1117
-FG_DEFAULT = (201, 209, 217)  # #c9d1d9
+BG = (13, 13, 20)           # Alacritty background #0D0D14
+FG_DEFAULT = (206, 205, 202)  # Alacritty foreground #CECDCA
 COLS, ROWS = 84, 8
 
 def load_font(path, size):
@@ -60,14 +60,12 @@ def parse_runs(line):
 
 def font_for(ch):
     cp = ord(ch)
-    if 0x2800 <= cp <= 0x28FF and cp in braille_c:
-        return braille_f
-    if unicodedata.east_asian_width(ch) in ("W", "F") and cp in cjk_c:
-        return cjk_f
-    if cp in mono_c:
+    if cp in mono_c:  # Hurmit Nerd Font Mono 含 braille/●/│，优先用（与 Alacritty 一致）
         return mono_f
     if cp in cjk_c:
         return cjk_f
+    if 0x2800 <= cp <= 0x28FF and cp in braille_c:
+        return braille_f
     return mono_f
 
 def render_frame(lines):

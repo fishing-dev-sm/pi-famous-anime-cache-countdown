@@ -1,0 +1,247 @@
+#!/usr/bin/env python3
+"""e2e_tui.py — pi TUI 真实终端 E2E 驱动（pty）
+
+三个场景：
+  A: k3 回归（不得误判 deepseek）+ 待机不显示 + /eva_cache_countdown + /facc 菜单
+  B: DeepSeek 默认模型 12h 宏观模式（HH:MM:SS + 長 EXTERNAL 期 + HIT%）
+  C: 25s 短 TTL 假模型，真实走完 绿→黄→橙→红→红闪→限界突破 全周期
+
+用法: python3 e2e_tui.py            # 全部场景
+      python3 e2e_tui.py a|b|c      # 单个场景
+产物: docs/e2e/<scenario>.log（原始 pty 字节流）+ docs/e2e/report.md
+"""
+import json, os, pty, re, select, shutil, struct, subprocess, sys, fcntl, termios, time
+from pathlib import Path
+
+PROJ = "/home/sim/code/famous-anime-cache-countdown"
+REAL_AGENT = os.path.expanduser("~/.pi/agent")
+OUT = Path(PROJ) / "docs" / "e2e"
+OUT.mkdir(parents=True, exist_ok=True)
+
+# 关键 ANSI 指纹（与 index.ts 色号一致）
+GREEN_BG = "48;2;34;197;94"      # #22c55e NORMAL
+YELLOW_BG = "48;2;234;179;8"     # #eab308 CAUTION
+ORANGE_BG = "48;2;249;115;22"    # #f97316 DANGER
+RED_BG = "48;2;239;68;68"        # #ef4444 EMERGENCY
+DS_BG = "48;2;59;130;246"        # #3b82f6 DeepSeek 蓝
+DANGER_BG = "48;2;185;28;28"     # #b91c1c
+
+
+class PtySession:
+    def __init__(self, argv, env, log_path, cols=100, rows=30):
+        self.master, slave = pty.openpty()
+        fcntl.ioctl(slave, termios.TIOCSWINSZ, struct.pack("HHHH", rows, cols, 0, 0))
+        e = dict(os.environ, TERM="xterm-256color", COLORTERM="truecolor", **env)
+        self.proc = subprocess.Popen(argv, stdin=slave, stdout=slave, stderr=slave,
+                                     env=e, cwd=PROJ, close_fds=True)
+        os.close(slave)
+        self.buf = b""
+        self.log = open(log_path, "wb")
+
+    def pump(self, timeout=0.2):
+        r, _, _ = select.select([self.master], [], [], timeout)
+        if r:
+            try:
+                data = os.read(self.master, 65536)
+            except OSError:
+                return False
+            self.buf += data
+            self.log.write(data)
+            self.log.flush()
+        return True
+
+    def text(self):
+        return self.buf.decode("utf-8", errors="replace")
+
+    def wait_for(self, pattern, timeout=30, regex=False):
+        deadline = time.time() + timeout
+        while time.time() < deadline:
+            self.pump(0.2)
+            t = self.text()
+            if (re.search(pattern, t) if regex else pattern in t):
+                return True
+            if self.proc.poll() is not None:
+                return False
+        return False
+
+    def send(self, s, settle=0.4):
+        os.write(self.master, s.encode())
+        end = time.time() + settle
+        while time.time() < end:
+            self.pump(0.1)
+
+    def count(self, needle):
+        return self.text().count(needle)
+
+    def close(self):
+        try:
+            self.proc.terminate()
+            self.proc.wait(timeout=5)
+        except Exception:
+            self.proc.kill()
+        self.log.close()
+        os.close(self.master)
+
+
+results = []
+
+
+def check(name, ok, detail=""):
+    results.append((name, ok, detail))
+    print(f"  [{'PASS' if ok else 'FAIL'}] {name}" + (f" — {detail}" if detail else ""))
+
+
+def boot(argv_extra, env, log_name):
+    s = PtySession(["pi", "--no-mcp", *argv_extra], env, OUT / log_name)
+    # 等编辑器提示符出现（TUI 就绪）
+    if not s.wait_for("❯", timeout=90):
+        s.close()
+        raise RuntimeError(f"pi TUI 未就绪（{log_name}）")
+    time.sleep(1)
+    while s.pump(0.1):
+        pass
+    return s
+
+
+# ── 场景 A：k3 回归 + 待机 + 斜杠命令 ──────────────────────────────────────
+def scenario_a():
+    print("scenario A: k3 regression + standby + commands")
+    s = boot(["--model", "kimi-coding/k3"], {}, "a-k3.log")
+    try:
+        mark = len(s.buf)
+        s.send("say ok\r")
+        ok_widget = s.wait_for("CACHE 限界", timeout=90)
+        check("A1 k3 首次请求后出现倒计时", ok_widget)
+        standby_part = s.text()[: len(s.buf[:mark].decode('utf-8', errors='replace'))]
+        check("A2 待机（请求前）不显示 CACHE 限界", "CACHE 限界" not in s.buf[:mark].decode("utf-8", errors="replace"))
+        time.sleep(2)
+        while s.pump(0.1):
+            pass
+        t = s.text()
+        check("A3 k3 走 300s 短逻辑（绿 NORMAL 徽章）", GREEN_BG in t and " NORMAL " in t)
+        check("A4 k3 不显示蓝色 DEEPSEEK 宏观行", "CACHE DEEPSEEK" not in t and DS_BG not in t,
+              "回归点：provider=kimi-coding,id=k3 不得判为 deepseek")
+
+        s.send("/eva_cache_countdown\r", settle=1.5)
+        check("A5 /eva_cache_countdown → alarm OFF", s.wait_for("alarm: OFF", timeout=10))
+        s.send("/eva_cache_countdown\r", settle=1.5)
+        check("A6 /eva_cache_countdown → alarm ON", s.wait_for("alarm: ON", timeout=10))
+
+        s.send("/facc\r", settle=1.0)
+        check("A7 /facc 打开配置菜单", s.wait_for("widget placement", timeout=10))
+        s.send("\r", settle=1.5)  # 第一项 = aboveEditor
+        check("A8 /facc 切换到 aboveEditor", s.wait_for("placement → aboveEditor", timeout=10))
+        s.send("/facc\r", settle=1.0)
+        s.wait_for("widget placement", timeout=10)
+        s.send("\x1b[B\r", settle=1.5)  # 第二项 = belowEditor
+        check("A9 /facc 切回 belowEditor", s.wait_for("placement → belowEditor", timeout=10))
+        cfg = json.load(open(f"{REAL_AGENT}/facc.json"))
+        check("A10 facc.json 恢复 belowEditor", cfg.get("placement") == "belowEditor")
+    finally:
+        s.close()
+
+
+# ── 场景 B：DeepSeek 12h 宏观模式 ─────────────────────────────────────────
+def scenario_b():
+    print("scenario B: deepseek 12h macro mode")
+    s = boot([], {}, "b-deepseek.log")  # 默认模型 = deepseek/deepseek-v4-pro
+    try:
+        s.send("say ok\r")
+        ok = s.wait_for("CACHE DEEPSEEK", timeout=90)
+        check("B1 deepseek 请求后出现宏观行", ok)
+        time.sleep(3)
+        while s.pump(0.1):
+            pass
+        t = s.text()
+        check("B2 蓝色徽章配色 #3b82f6", DS_BG in t)
+        check("B3 HH:MM:SS 宏观时间（11:5x:xx）", bool(re.search(r"11:5\d:\d\d", t)))
+        check("B4 長 EXTERNAL 期 徽章", "EXTERNAL" in t)
+        check("B5 HIT% 徽章（--% 或真实命中率）", bool(re.search(r"HIT (?:--|\d+)%", t)))
+        check("B6 不出现五段短逻辑徽章", "CACHE 限界" not in t and GREEN_BG not in t)
+    finally:
+        s.close()
+
+
+# ── 场景 C：25s 短 TTL 全周期（隔离 agent dir + 假模型）─────────────────────
+def scenario_c():
+    print("scenario C: 25s TTL full phase cycle (isolated agent dir)")
+    tmp = Path("/tmp/facc-e2e-agent")
+    shutil.rmtree(tmp, ignore_errors=True)
+    tmp.mkdir(parents=True)
+    auth = json.load(open(f"{REAL_AGENT}/auth.json"))
+    (tmp / "auth.json").write_text(json.dumps({"deepseek": auth["deepseek"]}))
+    (tmp / "models.json").write_text(json.dumps({
+        "providers": {
+            "e2e25": {
+                "baseUrl": "https://api.deepseek.com",
+                "api": "openai-completions",
+                "apiKey": auth["deepseek"]["key"],
+                "models": [{
+                    "id": "e2e-25s", "name": "E2E 25s TTL",
+                    "api": "openai-completions",
+                    "baseUrl": "https://api.deepseek.com",
+                    "provider": "e2e25",
+                    "reasoning": False,
+                    "input": ["text"],
+                    "cost": {"input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0},
+                    "contextWindow": 128000, "maxTokens": 8192,
+                    "promptCache": {"short": 25},
+                }],
+            }
+        }
+    }))
+    (tmp / "settings.json").write_text(json.dumps({
+        "lastChangelogVersion": "1.0.4",
+        "defaultProvider": "e2e25", "defaultModel": "e2e-25s",
+    }))
+
+    s = boot(["-e", f"{PROJ}/index.ts", "--model", "e2e25/e2e-25s"],
+             {"PI_CODING_AGENT_DIR": str(tmp)}, "c-phases.log")
+    try:
+        mark = len(s.buf)
+        s.send("hi\r")
+        t0 = time.time()
+        check("C1 请求发出后倒计时出现（25s TTL）", s.wait_for("CACHE 限界", timeout=60))
+        check("C2 待机不显示", "CACHE 限界" not in s.buf[:mark].decode("utf-8", errors="replace"))
+        # 采 35s：记录各颜色首见时间（相对 t0）
+        first = {}
+        end = time.time() + 35
+        while time.time() < end:
+            s.pump(0.2)
+            t = s.text()
+            for label, pat in [("green", GREEN_BG), ("yellow", YELLOW_BG), ("orange", ORANGE_BG),
+                               ("red", RED_BG), ("dangerBg", DANGER_BG), ("expired", "CACHE EXPIRED 限界突破")]:
+                if label not in first and pat in t:
+                    first[label] = round(time.time() - t0, 1)
+            if "expired" in first:
+                break
+        print("  phase first-seen:", first)
+        order_ok = all(k in first for k in ("green", "yellow", "orange", "red", "expired")) and \
+            first["green"] < first["yellow"] < first["orange"] < first["red"] < first["expired"]
+        check("C3 五段按序切换 绿→黄→橙→红→限界突破", order_ok, json.dumps(first))
+        check("C4 过期定格 CACHE EXPIRED 限界突破", "expired" in first and "终 OVER 了" in s.text())
+        check("C5 过期时间 ~25s（20~35s 区间）", "expired" in first and 18 <= first["expired"] <= 35,
+              f"expired at {first.get('expired')}s")
+        check("C6 EMERGENCY 段出现 #b91c1c 深红徽章", "dangerBg" in first)
+    finally:
+        s.close()
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
+SCENARIOS = {"a": scenario_a, "b": scenario_b, "c": scenario_c}
+which = sys.argv[1:] or ["a", "b", "c"]
+for w in which:
+    try:
+        SCENARIOS[w]()
+    except Exception as e:
+        check(f"scenario {w} 运行异常", False, repr(e))
+
+lines = ["# facc E2E report", "", f"- date: {time.strftime('%Y-%m-%d %H:%M:%S')}",
+         f"- pi: {subprocess.run(['pi', '--version'], capture_output=True, text=True).stdout.strip()}",
+         ""]
+for name, ok, detail in results:
+    lines.append(f"- [{'PASS' if ok else 'FAIL'}] {name}" + (f" — {detail}" if detail else ""))
+(OUT / "report.md").write_text("\n".join(lines) + "\n")
+failed = [n for n, ok, _ in results if not ok]
+print(f"\n{'ALL PASS' if not failed else 'FAILED: ' + ', '.join(failed)}  (report: {OUT/'report.md'})")
+sys.exit(1 if failed else 0)
