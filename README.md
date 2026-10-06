@@ -10,22 +10,6 @@ EVA「活動限界」-style prompt-cache TTL countdown for [pi](https://github.c
 
 ## Demo
 
-Five-phase countdown → 限界突破 (expired):
-
-![five phases](docs/five-phases.gif)
-
-DeepSeek 12h macro mode (`HH:MM:SS` + `長 EXTERNAL 期` + real `HIT%`):
-
-![deepseek 12h](docs/deepseek-12h.gif)
-
-Standby → wakes on first request (nothing is shown before that):
-
-![standby wake](docs/standby-wake.gif)
-
-GIFs are rendered from the real extension code (`demo-frames.mjs` + `render_gif.py`); E2E verification against a live pi TUI is in `e2e_tui.py` (report: `docs/e2e/report.md`).
-
-## Demo
-
 DeepSeek 12 h macro mode (undocumented, best-effort cache that empirically lives ≥ 12 h):
 
 ![deepseek-12h](docs/deepseek-12h.gif)
@@ -37,6 +21,8 @@ Full 5-minute lifecycle, compressed to ~12 s — five phases, final-second flash
 Standby → first request lights it up:
 
 ![standby-wake](docs/standby-wake.gif)
+
+GIFs are produced from the real extension code (`demo-frames.mjs` frames, played in a real Alacritty via `player.mjs` + `record_gifs.sh`). E2E verification against a live pi TUI (pty-driven) is in `e2e_tui.py` — report: `docs/e2e/report.md`.
 
 ## Features
 
