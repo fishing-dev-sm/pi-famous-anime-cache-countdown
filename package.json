@@ -1,0 +1,10 @@
+{
+	"name": "famous-anime-cache-countdown",
+	"version": "0.1.0",
+	"description": "EVA「活動限界」style prompt-cache TTL countdown footer for pi",
+	"type": "module",
+	"main": "index.ts",
+	"pi": {
+		"extensions": ["./index.ts"]
+	}
+}
