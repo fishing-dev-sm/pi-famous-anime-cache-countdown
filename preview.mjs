@@ -1,198 +1,146 @@
-// preview.mjs — EVA「活動限界」cache countdown 完整设计稿（真实 ANSI 颜色）
+// preview.mjs — famous-anime-cache-countdown 一行版设计稿（真实 ANSI 颜色）
 // 运行：node preview.mjs
-// v4：四段色（绿→黄→橙→红）· braille 进度条 · 双线夹心+刻度边框 · 反白徽章
+// 与 index.ts 的 buildEvaLine / buildDeepseekLine 渲染逻辑逐字节一致（仅 style 换成 ANSI 输出）。
+// 布局：[反白徽章 CACHE 限界] [20格 braille 条(垂直3级+中央tick)] [●] [反白 MM:SS:cc] [五段状态徽章]
+// 状态（TTL 五等分）：NORMAL → 注 CAUTION 意 → 危 DANGER 険 → 緊 EMERGENCY 急 →（末段反相闪烁）
 
 const RESET = "\x1b[0m";
-const fg = (c, s) => `\x1b[38;2;${c[0]};${c[1]};${c[2]}m${s}${RESET}`;
-const bgc = (c, s) => `\x1b[48;2;${c[0]};${c[1]};${c[2]}m${s}${RESET}`;
-const blink = (s) => `\x1b[5m${s}\x1b[0m`;
-
 const hexToRgb = (h) => [parseInt(h.slice(1, 3), 16), parseInt(h.slice(3, 5), 16), parseInt(h.slice(5, 7), 16)];
 
-// contrastTextColor（抄 pi-fleet color.ts，WCAG 相对亮度选黑/白字）
-function contrastTextColor(bgHex) {
+// style：与 index.ts 的 StyleFn 同签名（text, fgHex, bgHex?），此处输出 ANSI 真色
+const style = (text, fgHex, bgHex) => {
+  const f = hexToRgb(fgHex);
+  const fg = `\x1b[38;2;${f.join(";")}m`;
+  const bg = bgHex ? `\x1b[48;2;${hexToRgb(bgHex).join(";")}m` : "";
+  return `${fg}${bg}${text}${RESET}`;
+};
+
+// WCAG 对比度选反白字色（与 index.ts contrastFg / pi-fleet color.ts contrastTextColor 一致）
+function contrastFg(bgHex) {
   const [r, g, b] = hexToRgb(bgHex);
   const ch = (v) => { const s = v / 255; return s <= 0.03928 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4; };
   const lum = 0.2126 * ch(r) + 0.7152 * ch(g) + 0.0722 * ch(b);
   return (lum + 0.05) / 0.05 >= 1.05 / (lum + 0.05) ? "#000000" : "#ffffff";
 }
-// badge（抄 pi-fleet color.ts，bg 填充 + contrastTextColor 选字色）
-const badge = (s, bgHex) => {
-  const f = hexToRgb(contrastTextColor(bgHex));
-  const b = hexToRgb(bgHex);
-  return `\x1b[38;2;${f.join(";")}m\x1b[48;2;${b.join(";")}m${s}${RESET}`;
-};
 
-// 色号（抄自 pi-fleet packages/pi-agent-swarm/src/color.ts + swarm-controller.ts）
-// SWARM_COLORS = 角色 8 色调色板；ROLE_BADGE_BG = LEADER/WORKER 反白奶油黄
-const SWARM_COLORS = { red: "#ef4444", orange: "#f97316", yellow: "#eab308", green: "#22c55e",
-                       cyan: "#06b6d4", blue: "#3b82f6", magenta: "#d946ef", purple: "#8b5cf6" };
-const ROLE_BADGE_BG = "#ffc85a"; // LEADER/WORKER 反白奶油黄（swarm-controller.ts:51）
-
-// 四段色 随时间恶化：绿→黄→橙→红（main 抄 SWARM_COLORS；hi/sub/tick 用 Tailwind 400/700/600 色阶）
-// 时间划分（总 5:00）：绿 >3:45 ｜ 黄 3:45–2:30 ｜ 橙 2:30–1:15 ｜ 红 <1:15
-const TOTAL = 300;
-const phase = (sec) => sec > 225 ? 0 : sec > 150 ? 1 : sec > 75 ? 2 : 3; // 0绿 1黄 2橙 3红
-
-const P = [
-  { main: "#22c55e", hi: "#4ade80", sub: "#15803d", slot: "#052e0f", tick: "#16a34a", panel: "#04170a" }, // 0 绿 green
-  { main: "#eab308", hi: "#facc15", sub: "#a16207", slot: "#2a2001", tick: "#ca8a04", panel: "#0f0c01" }, // 1 黄 yellow
-  { main: "#f97316", hi: "#fb923c", sub: "#c2410c", slot: "#2a1201", tick: "#ea580c", panel: "#100601" }, // 2 橙 orange
-  { main: "#ef4444", hi: "#f87171", sub: "#b91c1c", slot: "#2a0101", tick: "#dc2626", panel: "#0f0101" }, // 3 红 red
+// 五段等分（同 index.ts）：总 TTL 均分 5 段；色号抄 pi-fleet（SWARM_COLORS + Tailwind 色阶）
+const PHASES = [
+  { main: "#22c55e", hi: "#4ade80", sub: "#15803d", tick: "#16a34a" }, // 0 绿 sec > 240   NORMAL
+  { main: "#eab308", hi: "#facc15", sub: "#a16207", tick: "#ca8a04" }, // 1 黄 240≥sec>180  注 CAUTION 意
+  { main: "#f97316", hi: "#fb923c", sub: "#c2410c", tick: "#ea580c" }, // 2 橙 180≥sec>120  危 DANGER 険
+  { main: "#ef4444", hi: "#f87171", sub: "#b91c1c", tick: "#dc2626" }, // 3 红 120≥sec>60  緊 EMERGENCY 急
+  { main: "#ef4444", hi: "#f87171", sub: "#b91c1c", tick: "#dc2626" }, // 4 红闪 sec ≤ 60   緊 EMERGENCY 急（反相闪烁）
 ];
-const MAIN = (e) => hexToRgb(P[e].main);
-const HI = (e) => hexToRgb(P[e].hi);
-const SLOT = (e) => hexToRgb(P[e].slot);
-const SUB = (e) => hexToRgb(P[e].sub);
-const TICK = (e) => hexToRgb(P[e].tick);
-const PANEL = (e) => hexToRgb(P[e].panel);
+const DANGER_BG = "#b91c1c";
+const PULSE_GREEN = "#86efac"; // ● 运行指示：非常淡的绿色
+const DEEPSEEK_PHASE = { main: "#3b82f6", hi: "#60a5fa", sub: "#1d4ed8", tick: "#2563eb" }; // 蓝系（12h 宏观）
 
-// ---- 可见宽度（CJK 按 2 列）----
-function charW(c) {
-  const cp = c.codePointAt(0);
-  return (cp >= 0x1100 && cp <= 0x115f) || cp === 0x2329 || cp === 0x232a ||
-    (cp >= 0x2e80 && cp <= 0xa4cf) || (cp >= 0xac00 && cp <= 0xd7a3) ||
-    (cp >= 0xf900 && cp <= 0xfaff) || (cp >= 0xfe10 && cp <= 0xfe19) ||
-    (cp >= 0xfe30 && cp <= 0xfe6f) || (cp >= 0xff00 && cp <= 0xff60) ||
-    (cp >= 0xffe0 && cp <= 0xffe6) || (cp >= 0x20000 && cp <= 0x2fffd) ||
-    (cp >= 0x30000 && cp <= 0x3fffd) ? 2 : 1;
-}
-const vw = (s) => { let w = 0; for (const c of s.replace(/\x1b\[[0-9;]*m/g, "")) w += charW(c); return w; };
-const padC = (s, w) => { const d = w - vw(s); const l = Math.floor(d / 2); return " ".repeat(l) + s + " ".repeat(d - l); };
-const padL = (s, w) => s + " ".repeat(Math.max(0, w - vw(s)));
-const padR = (s, w) => " ".repeat(Math.max(0, w - vw(s))) + s;
+const GAUGE_CELLS = 20;
+const FALLBACK_TTL_MS = 5 * 60 * 1000;
 
-// ---- 大数字 5×3 全块字模 ----
-const D = {
-  "0": ["███", "█ █", "█ █", "█ █", "███"],
-  "1": [" █ ", "██ ", " █ ", " █ ", "███"],
-  "2": ["███", "  █", "███", "█  ", "███"],
-  "3": ["███", "  █", "███", "  █", "███"],
-  "4": ["█ █", "█ █", "███", "  █", "  █"],
-  "5": ["███", "█  ", "███", "  █", "███"],
-  "6": ["███", "█  ", "███", "█ █", "███"],
-  "7": ["███", "  █", "  █", "  █", "  █"],
-  "8": ["███", "█ █", "███", "█ █", "███"],
-  "9": ["███", "█ █", "███", "  █", "███"],
-  ":": ["   ", " █ ", "   ", " █ ", "   "],
+const phaseOf = (sec, totalSec) => {
+  const b = totalSec / 5;
+  return sec > 4 * b ? 0 : sec > 3 * b ? 1 : sec > 2 * b ? 2 : sec > b ? 3 : 4;
 };
-function bigRows(str, e) {
-  const rows = ["", "", "", "", ""];
-  for (const ch of str) {
-    const g = D[ch] ?? D["0"];
-    for (let r = 0; r < 5; r++) {
-      rows[r] += (ch === ":" ? blink(fg(HI(e), g[r])) : fg(MAIN(e), g[r])) + " ";
+
+/** 与 index.ts buildEvaLine 一致（nowMs 控制 ●/末段/红闪的闪烁相位） */
+function buildEvaLine(remainMs, totalMs, nowMs) {
+  if (remainMs <= 0) {
+    const P = PHASES[3];
+    const titleBadge = style(" CACHE EXPIRED 限界突破 ", contrastFg(P.main), P.main);
+    let bar = "";
+    for (let i = 0; i < GAUGE_CELLS; i++) {
+      bar += style("⣀", P.main);
+      if (i === GAUGE_CELLS / 2 - 1) bar += style("│", P.tick);
     }
+    const time = style("00:00:00", P.main);
+    const status = style("终 OVER 了", contrastFg(DANGER_BG), DANGER_BG);
+    return `${titleBadge} ${bar} ${time} ${status}`;
   }
-  return rows;
-}
 
-// ---- 进度条：braille 点阵（⣿ 满 / ⣀ 空，同一主色，靠点阵密度区分）----
-function gauge(cells, sec, e, blinkEdge) {
-  const filled = Math.round((sec / TOTAL) * cells);
-  const half = cells / 2;
-  let out = "";
-  for (let i = 0; i < cells; i++) {
-    const on = i >= cells - filled;
-    let seg = fg(MAIN(e), on ? "⣿" : "⣀");  // ⣀/⣿ 同一主色
-    if (blinkEdge && on && i >= cells - blinkEdge) seg = blink(seg);
-    out += seg;
-    if (i === half - 1) out += fg(TICK(e), "│");
+  const totalSec = totalMs / 1000;
+  const sec = Math.floor(Math.max(0, remainMs) / 1000);
+  const centi = Math.floor((Math.max(0, remainMs) % 1000) / 10);
+  const e = phaseOf(sec, totalSec);
+  const P = PHASES[e];
+
+  const titleBadge = style(" CACHE 限界 ", contrastFg(P.main), P.main);
+
+  const LEVELS = ["⣀", "⣤", "⣶", "⣿"];
+  const units = Math.round((Math.min(sec, totalSec) / totalSec) * GAUGE_CELLS * 3);
+  const blinkEdge = sec <= 20 ? 2 : 0;
+  const blinkOn = Math.floor(nowMs / 500) % 2 === 0;
+  let bar = "";
+  for (let i = 0; i < GAUGE_CELLS; i++) {
+    const level = Math.max(0, Math.min(3, units - (GAUGE_CELLS - 1 - i) * 3));
+    const edgeOff = blinkEdge > 0 && level > 0 && i >= GAUGE_CELLS - blinkEdge && !blinkOn;
+    bar += style(edgeOff ? "⣀" : LEVELS[level], P.main);
+    if (i === GAUGE_CELLS / 2 - 1) bar += style("│", P.tick);
   }
-  return out;
+
+  const mm = String(Math.floor(sec / 60)).padStart(2, "0");
+  const ss = String(sec % 60).padStart(2, "0");
+  const cc = String(centi).padStart(2, "0");
+  const fgHex = contrastFg(P.main);
+  const digit = (s) => style(s, fgHex, P.main);
+  const lastDigit = style(cc[1], P.sub, P.main);
+  const timeBadge = digit(" " + mm + ":" + ss + ":" + cc[0]) + lastDigit + digit(" ");
+
+  const pulse = Math.floor(nowMs / 90) % 2 === 0 ? style("●", PULSE_GREEN) : " ";
+
+  let status;
+  if (e <= 2) {
+    const text = e === 0 ? " NORMAL " : e === 1 ? " 注 CAUTION 意 " : " 危 DANGER 険 ";
+    status = style(text, contrastFg(P.main), P.main);
+  } else if (e === 3) {
+    status = style(" 緊 EMERGENCY 急 ", "#ffffff", DANGER_BG);
+  } else {
+    status =
+      Math.floor(nowMs / 400) % 2 === 0
+        ? style(" 緊 EMERGENCY 急 ", "#ffffff", DANGER_BG)
+        : style(" 緊 EMERGENCY 急 ", DANGER_BG, P.hi);
+  }
+
+  return `${titleBadge} ${bar} ${pulse} ${timeBadge} ${status}`;
 }
 
-function fmt(sec, centi) {
-  return `${String(Math.floor(sec / 60)).padStart(2, "0")}:${String(sec % 60).padStart(2, "0")}:${String(centi).padStart(2, "0")}`;
+/** 与 index.ts buildDeepseekLine 一致（DeepSeek 12h 宏观模式） */
+function buildDeepseekLine(remainMs, totalMs, hitRate) {
+  const P = DEEPSEEK_PHASE;
+  const titleBadge = style(" CACHE DEEPSEEK ", contrastFg(P.main), P.main);
+
+  const totalSec = totalMs / 1000;
+  const sec = Math.floor(Math.max(0, remainMs) / 1000);
+  const LEVELS = ["⣀", "⣤", "⣶", "⣿"];
+  const units = Math.round((Math.min(sec, totalSec) / totalSec) * GAUGE_CELLS * 3);
+  let bar = "";
+  for (let i = 0; i < GAUGE_CELLS; i++) {
+    const level = Math.max(0, Math.min(3, units - (GAUGE_CELLS - 1 - i) * 3));
+    bar += style(LEVELS[level], P.main);
+    if (i === GAUGE_CELLS / 2 - 1) bar += style("│", P.tick);
+  }
+
+  const hh = String(Math.floor(sec / 3600)).padStart(2, "0");
+  const mm = String(Math.floor((sec % 3600) / 60)).padStart(2, "0");
+  const ss = String(sec % 60).padStart(2, "0");
+  const timeBadge = style(` ${hh}:${mm}:${ss} `, contrastFg(P.main), P.main);
+  const status = style(" 長 EXTERNAL 期 ", contrastFg(P.main), P.main);
+  const hit = style(hitRate === null ? " HIT --% " : ` HIT ${Math.round(hitRate * 100)}% `, contrastFg(P.sub), P.sub);
+  return `${titleBadge} ${bar} ${timeBadge} ${status} ${hit}`;
 }
 
-// ============================================================
-// 一级 · 一行简约版
-// ============================================================
-function lineVersion(sec, centi) {
-  const e = phase(sec);
-  const t = fmt(sec, centi);
-  const bar = gauge(20, sec, e, sec <= 20 ? 2 : 0);
-  const tBlock = badge(" " + t + " ", P[e].main);  // 时间数字反白（主色底+黑字）
-  const status = e === 3 ? fg(SUB(e), "CACHE ") + badge("危 DANGER 険", "#b91c1c")
-                         : fg(SUB(e), "CACHE ") + badge("NORMAL", P[e].main);
-  return `${badge(" CACHE TTL 限界 ", P[e].main)} ${bar} ${tBlock} ${status}`;
-}
-
-console.log("══════════ 完整设计稿 · 一级 · 一行简约版 ══════════");
-console.log(lineVersion(280, 0));  // 绿段 04:40:00
-console.log(lineVersion(200, 0));  // 黄段 03:20:00
-console.log(lineVersion(120, 0));  // 橙段 02:00:00
-console.log(lineVersion(40, 0));   // 红段 00:40:00
-console.log(lineVersion(9, 42));   // 红段 00:09:42（末段闪烁）
+const NOW = 0; // 预览静态相位（● 亮、末段不闪、红闪=亮相）
+console.log("══ famous-anime-cache-countdown · 一行版 · 五状态（node preview.mjs）══");
+console.log(buildEvaLine(4 * 60 * 1000 + 40 * 1000, FALLBACK_TTL_MS, NOW)); // 绿 04:40:00  NORMAL
+console.log(buildEvaLine(3 * 60 * 1000 + 20 * 1000, FALLBACK_TTL_MS, NOW)); // 黄 03:20:00  注 CAUTION 意
+console.log(buildEvaLine(2 * 60 * 1000 + 30 * 1000, FALLBACK_TTL_MS, NOW)); // 橙 02:30:00  危 DANGER 険
+console.log(buildEvaLine(1 * 60 * 1000 + 30 * 1000, FALLBACK_TTL_MS, NOW)); // 红 01:30:00  緊 EMERGENCY 急
+console.log(buildEvaLine(30 * 1000, FALLBACK_TTL_MS, NOW));                  // 红闪 00:30:00 緊 EMERGENCY 急（NOW=0 亮相）
+console.log(buildEvaLine(0, FALLBACK_TTL_MS, NOW));                          // 过期 限界突破
 console.log("");
-
-// ============================================================
-// 二级 · 多行完整版（双线夹心边框 + 内嵌刻度 + 反色）
-// ============================================================
-const IN = 60; // 内宽
-
-function fullPanel(sec, centi) {
-  const e = phase(sec);
-  const t = fmt(sec, centi);
-  const pct = Math.round((sec / TOTAL) * 100);
-  const bar = gauge(24, sec, e, sec <= 20 ? 2 : 0);
-  const battN = Math.ceil(sec / 30);
-  const batt = fg(MAIN(e), "▮".repeat(battN)) + fg(SLOT(e), "▯".repeat(10 - battN));
-  const battLabel = fg(HI(e), ["100%", "75%", "50%", "LOW"][e]);
-
-  const top = `PROMPT CACHE SYSTEM ─ 限界`;
-  const bot = `PI AGENT · MODEL SYNC ── CACHE · SESSION`;
-  // 内嵌刻度行（24 格条，每 6 格一个 ┬）
-  let ruler = "";
-  for (let i = 0; i < 24; i++) ruler += (i % 6 === 0 ? fg(SUB(e), "┬") : " ");
-  const internalLine = `CACHE ▸ ${bar} ${fg(HI(e), String(pct).padStart(3) + "% REMAINING")}`;
-  const externalLine = `${fg(SUB(e), "API ─ RECOMPUTE")}  ${fg(SUB(e), "BUFFER")} ${batt} ${battLabel}`;
-  const status = e === 3 ? `${fg(SUB(e), "STATUS:")} ${badge(" 危 DANGER 険 ", "#b91c1c")} ${fg(HI(e), "EXPIRING")}`
-                         : `${fg(SUB(e), "STATUS:")} ${badge("NORMAL", P[e].main)}`;
-  const sound = e === 3 ? `${fg(HI(e), "BGM ON")}  ${fg(HI(e), "⚠警報 ON")}`
-                        : `${fg(HI(e), "BGM ON")}  ${fg(HI(e), "⚠警報 ON")}  ${fg(SUB(e), "TTL 5:00")}`;
-
-  // 内框（light，次级色）+ 外框（heavy，主色）
-  const inE = fg(SUB(e), "│");
-  const innerTop = fg(SUB(e), "┌─") + fg(MAIN(e), top) + fg(SUB(e), "─".repeat(Math.max(1, IN - vw(top))) + "┐");
-  const innerBot = fg(SUB(e), "└─") + fg(MAIN(e), bot) + fg(SUB(e), "─".repeat(Math.max(1, IN - vw(bot))) + "┘");
-  const blank = bgc(PANEL(e), inE + " ".repeat(IN) + inE);
-  const center = (s) => bgc(PANEL(e), inE + padC(s, IN) + inE);
-  const readout = (s) => bgc(PANEL(e), inE + "  " + padL(s, IN - 2) + inE);
-
-  const wrap = (s) => fg(MAIN(e), "║") + s + fg(MAIN(e), "║");
-  const outerTop = fg(MAIN(e), "╔" + "═".repeat(IN + 2) + "╗");
-  const outerBot = fg(MAIN(e), "╚" + "═".repeat(IN + 2) + "╝");
-
-  const L = [];
-  L.push(outerTop);
-  L.push(wrap(innerTop));
-  L.push(wrap(blank));
-  for (const r of bigRows(t, e)) L.push(wrap(center(r)));
-  L.push(wrap(blank));
-  L.push(wrap(readout("CACHE ▸ " + ruler)));   // 内嵌刻度
-  L.push(wrap(readout(internalLine)));         // CACHE 条
-  L.push(wrap(readout(externalLine)));         // API/BUFFER
-  L.push(wrap(readout(status + "  " + sound))); // STATUS
-  L.push(wrap(innerBot));
-  L.push(outerBot);
-  return L;
-}
-
-console.log("══════════ 完整设计稿 · 二级 · 多行完整版（绿段 04:40:00）══════════");
-console.log(fullPanel(280, 0).join("\n"));
+console.log("══ DeepSeek 12h 宏观模式 ══");
+console.log(buildDeepseekLine(11 * 3600 * 1000 + 59 * 60 * 1000, 12 * 3600 * 1000, 0.99)); // 11:59:00 HIT 99%
 console.log("");
-console.log("══════════ 完整设计稿 · 二级 · 多行完整版（黄段 03:20:00）══════════");
-console.log(fullPanel(200, 0).join("\n"));
-console.log("");
-console.log("══════════ 完整设计稿 · 二级 · 多行完整版（橙段 02:00:00）══════════");
-console.log(fullPanel(120, 0).join("\n"));
-console.log("");
-console.log("══════════ 完整设计稿 · 二级 · 多行完整版（红段 00:40:00）══════════");
-console.log(fullPanel(40, 0).join("\n"));
-console.log("");
-
-console.log(fg(SUB(0), "统一色：整行随段主色（标语/NORMAL 反白也随段变色，字色用 WCAG contrastTextColor）"));
-console.log(fg(SUB(0), "四段色(抄 pi-fleet) 绿#22c55e(>3:45) → 黄#eab308(3:45–2:30) → 橙#f97316(2:30–1:15) → 红#ef4444(<1:15)"));
-console.log(fg(SUB(0), "进度条=braille点阵(⣿满/⣀空 同一主色)；时间数字反白；双线夹心边框(外主色║╔╗ + 内次级│┌┐)；CACHE条上方内嵌刻度┬"));
+console.log(style("五段等分(抄 pi-fleet)：绿#22c55e(>4/5) → 黄#eab308(>3/5) → 橙#f97316(>2/5) → 红#ef4444(>1/5) → 红闪(≤1/5)", "#15803d"));
+console.log(style("进度条=braille 20格·每格垂直3级(⣀⣤⣶⣿)·中央tick·从右烧尽；时间反白·末位sub暗色；●淡绿#86efac 90ms闪烁", "#15803d"));
+console.log(style("过期=CACHE EXPIRED 限界突破 00:00:00 終 OVER 了(红定格)；无 BGM/alarm（已删，见 commit ffd9834）", "#15803d"));

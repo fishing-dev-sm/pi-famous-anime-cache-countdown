@@ -1,96 +1,83 @@
-# EVA「活動限界」缓存倒计时 — TUI 设计稿（综合定稿）
+# famous-anime-cache-countdown — TUI 设计稿（最终版）
 
-> 综合版：主线程 5×3 全块大数字字模 + K3 的调色板层次 / 彩蛋 / 反色徽章 / 子条 / 分级闪烁 / 宽度适配。
-> 真色预览：`node preview.mjs`
+> 一行 widget 致敬 EVA「活動限界」倒计时：Anthropic prompt cache TTL（5 分钟）倒计时，
+> 视觉与 `index.ts` 的 `buildEvaLine` / `buildDeepseekLine` 一致。真色预览：`node preview.mjs`。
 
 ## 常量
-- 总长 `05:00:00`（对应 pi `CACHE_TTL_MS = 5*60*1000`）
-- 分水岭 `02:30:00`（=150s）
-- 时间格式 `MM:SS:cc`（cc = 百分秒 1/100，还原 `4:59:96` 节奏）
-- 背景：面板用暖黑底（黄 `#0B0101` / 红 `#0C0000`，忠于原作暗红黑而非纯黑）
+- 总长 `05:00:00`（对应 pi `CACHE_TTL_MS = 5*60*1000`，Anthropic 短保留）
+- 五段等分：每段 60s（总 TTL 均分 5 段）
+- 时间格式 `MM:SS:cc`（cc = 百分秒 1/100，还原 `4:59:96` 节奏）；DeepSeek 模式用 `HH:MM:SS`
+- 布局：[反白徽章 CACHE 限界] [20 格 braille 条] [● 运行指示] [反白时间] [状态徽章]
 
-## 调色板（忠于 EVA 原作实测：scottykwok/eva-timer-analysis 逐帧直方图取样）
-| 用途 | 黄段（平和） | 红段（紧急） | 原作来源 |
-|---|---|---|---|
-| 主色（边框/大数字/已填格/日文标签） | `#FB9430` | `#DD264A` | NGE01 Yellow / EVA1 DANGER |
-| 高光（glow 亮部/百分比/STATUS 值/♪⚠） | `#ECAB4D` | `#FF5A7A` | DEA 金黄 / 玫红 glow |
-| 次级标注（英文/前缀/API） | `#E37C0B` | `#69050C` | DEA saturation / EVA2 DANGER |
-| NERV 绿（NORMAL/安全/数据） | `#6CA623` | `#3A6414` | NGE01 绿 / NGE09 暗绿 |
-| 空槽 | `#1B0201` | `#1B0003` | NGE08 暖黑 / NGE09 暗红黑 |
-| 面板底色 | `#0B0101` | `#0C0000` | NGE08 / EVA2 |
-| 分水岭 tick | `#EDA316` | `#69050C` | NGE03 金黄 |
-| DANGER 反色徽章 | — | 白 on `#69050C` 2Hz | EVA2 暗红底 |
-| EMERGENCY 戳 | — | 白 on `#DD264A` 1Hz | EVA1 DANGER |
+## 调色板（抄 pi-fleet `packages/pi-agent-swarm/src/color.ts` SWARM_COLORS + Tailwind 色阶）
+| 段 | main（底/主色） | hi（高光） | sub（次级/末位） | tick（分水岭） | 阈值 |
+|---|---|---|---|---|---|
+| 0 绿 | `#22c55e` | `#4ade80` | `#15803d` | `#16a34a` | sec > 240 |
+| 1 黄 | `#eab308` | `#facc15` | `#a16207` | `#ca8a04` | 240 ≥ sec > 180 |
+| 2 橙 | `#f97316` | `#fb923c` | `#c2410c` | `#ea580c` | 180 ≥ sec > 120 |
+| 3 红 | `#ef4444` | `#f87171` | `#b91c1c` | `#dc2626` | 120 ≥ sec > 60 |
+| 4 红闪 | `#ef4444` | `#f87171` | `#b91c1c` | `#dc2626` | sec ≤ 60 |
 
-> 原作 TV 版（V1）为暗红黑底 + 琥珀/黄发光 + NERV 绿数据；新剧场版（V2）DANGER 为玫红 `#DD264A`、AUX 蓝、底偏蓝。本设计黄段取 V1 琥珀、红段取 V2 玫红、绿取 V1 NERV 绿，按分水岭 2:30 切换。
+特殊色：`DANGER_BG = #b91c1c`（紅/红闪状态徽章底）、`PULSE_GREEN = #86efac`（● 运行指示，非常淡的绿）、
+DeepSeek 蓝系 `{ main:#3b82f6, hi:#60a5fa, sub:#1d4ed8, tick:#2563eb }`（冷静/长期，与绿 NORMAL 区分）。
 
-## 一、一级 · 一行简约版（1 行）
+反白字色：`contrastFg(bgHex)` = WCAG 相对亮度（gamma 校正）选黑/白，`(lum+0.05)/0.05 >= 1.05/(lum+0.05) ? #000 : #fff`（`#ef4444` 红底 → 黑字）。同 pi-fleet `contrastTextColor`。
 
-结构：`PI 缓存残量 あと <20格条·中央tick> <MM:SS:cc> <CACHE·状态> <♪>`
-
-- 条从右烧尽，20 格（每格 15s），cell 9/10 之间嵌分水岭 tick `│`（黄 `#EDA316` / 红 `#69050C`）；剩余格越过 tick 即全局翻红。
-- 末段（≤20s）最后 2 格 2Hz 闪烁。
-
+## 一行版布局（buildEvaLine）
 ```
-黄段  PI 缓存残量 あと ░░░░██████│██████████ 03:58:44 CACHE·NORMAL ♪
-       └sub┘ └─主色amber──┘ └slot┘└main┘└tick┘└─main─┘ └─高光#ECAB4D─┘ └─sub·NORMAL绿─┘└hi┘
-
-红段  PI 缓存残量 あと ░░░░░░░░░░│░░░░░░████ 01:07:32 CACHE·[DANGER] ♪
-       └sub┘ └─主色red────┘ └──slot──┘└tick┘└slot┘└main┘ └─高光#FF5A7A─┘ └sub·反色徽章2Hz┘└hi┘
+ CACHE 限界  ⣀⣶⣿⣿⣿⣿⣿⣿⣿⣿│⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿ ●  04:40:00   NORMAL
+ └反白徽章┘ └──20格 braille 条·中央tick──┘ └●┘ └反白时间┘ └状态徽章┘
 ```
 
-- `PI` 前缀次级色、`缓存残量 あと`主色、时间高光、`CACHE·NORMAL`/`CACHE·DANGER`（DANGER 用反色徽章）、行尾 `♪`=BGM on（off 时 `·` 空槽色）。
-- 宽度适配（5 档）：≥70 完整 → 56-69 去 `PI` 前缀 → 42-55 去 `CACHE·` → 30-41 条缩 6 格 → <30 仅 `MM:SS:cc`（时间永不截断）。
+- **反白徽章** ` CACHE 限界 `：底=当前段 main，字色 contrastFg。
+- **20 格 braille 条**：每格垂直 3 级填充 `⣀→⣤→⣶→⣿`（底部点阵→满），从右往左烧尽；
+  20 格 → 60 步分辨率。中央分水岭 `│`（tick 色）。末段 `sec<=20` 最后 2 格 500ms 闪烁。
+- **● 运行指示**：`#86efac` 淡绿，90ms 独立相位闪烁（与 83ms 渲染 tick 错开，避免相位锁死）。
+- **反白时间** `MM:SS:cc`：底=main、字色 contrastFg；末位 cc[1] 用 sub 暗色弱化（LiveSplit 式）；冒号常显不闪烁。
+  渲染 tick=83ms 与 cc 末位 10ms 周期不整除 → 末位自然轮转 0-9（真实秒表效果；100ms 会 10:1 相位锁死）。
+- **状态徽章**（五段）：
+  | 段 | 文案 | 样式 |
+  |---|---|---|
+  | 0 绿 | ` NORMAL ` | 反白（main 底） |
+  | 1 黄 | ` 注 CAUTION 意 ` | 反白（main 底） |
+  | 2 橙 | ` 危 DANGER 険 ` | 反白（main 底） |
+  | 3 红 | ` 緊 EMERGENCY 急 ` | 白字 on `#b91c1c` |
+  | 4 红闪 | ` 緊 EMERGENCY 急 ` | 400ms 反相闪烁（白字/`#b91c1c`底 ↔ 暗红字/亮红底） |
 
-## 二、二级 · 多行完整版（宽 62，高 12 行）
+## 过期状态（remainMs ≤ 0）
+`CACHE EXPIRED 限界突破 ⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀│⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀ 00:00:00 终 OVER 了`（红色定格，空条，时间红色数字不反白，无 ●）。
 
-内宽 60。大数字用 5×3 全块字模（见下）。顶部嵌 `PROMPT CACHE SYSTEM ─ 缓存残量 あと`，底部 `PI AGENT · MODEL SYNC ── CACHE · SESSION`。
-
+## DeepSeek 12h 宏观模式（buildDeepseekLine）
+DeepSeek 无 `promptCache` 声明、实测 cache ≥12h 存活（2026-10 TTL probe，V4.1 Flash 12h 仍 100% 命中），
+无法用 5 分钟 TTL，改用 12h 宏观倒计时：
 ```
-┌─PROMPT CACHE SYSTEM ─ 缓存残量 あと─────────────────────────┐
-│                                                            │
-│              ███ ███     ███ ███     █ █ █ █               │
-│              █ █   █  █  █   █ █  █  █ █ █ █               │
-│              █ █ ███     ███ ███     ███ ███               │  ← 5×3 全块大数字
-│              █ █   █  █    █ █ █  █    █   █               │     （03:58:44，amber）
-│              ███ ███     ███ ███       █   █               │
-│                                                            │
-│  CACHE ▸ ░░░░░███████│████████████  79% REMAINING          │
-│  API ─ RECOMPUTE  BUFFER ▮▮▮▮▮▮▮▮▯▯ 100%                   │
-│  STATUS: NORMAL  ♪BGM ON  ⚠ALARM ON  TTL 5:00              │
-└─PI AGENT · MODEL SYNC ── CACHE · SESSION────────────────────┘
+ CACHE DEEPSEEK  ⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿│⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿  11:59:00   長 EXTERNAL 期   HIT 99%
 ```
+- 蓝系配色、`HH:MM:SS`（秒级精度，无 cc）、无 ●。
+- `HIT XX%` = 上次响应 usage 真实命中率 `cacheRead/(cacheRead+input)`（DeepSeek 免费返回 prompt_cache_hit_tokens）。
+- 剩余 ≤300s 时无缝接入上方五段短逻辑（300s = 短逻辑窗口）。
+- 分流：仅 `isDeepseekModel`（provider/id 含 deepseek）；其他无声明模型（qwen-local 等）兜底 300s 短逻辑。
 
-红段（01:07:32）：全框变红，条剩 22%，`BUFFER ▮▮▮▯▯▯▯▯▯▯ LOW`，STATUS 行 → `STATUS: [DANGER] 缓存即将失效 ♪BGM ON ⚠ALARM ON`，边框 2Hz、`DANGER` 反色 2Hz、`缓存即将失效` 高光红。
+## 触发 / 重置逻辑（学习自 pi 内置 cache-warmer，core/sdk.ts:404）
+- **待机不显示**：`lastCacheAt = null` 时 widget 不渲染（session_start 清零，首个请求才安装 widget）。
+- **请求发出即重置**：`before_provider_request`（HTTP 调用前）→ `lastCacheAt = Date.now()`；
+  warmer 保活重放经同一 streamFn 也触发，另监听 `cache_warming_decision`（action==="warm"）双保险。
+- 渲染 tick `setInterval(83ms)` + `tui.requestRender()`；session_shutdown 幂等清理。
+- 有效 TTL：`declaredTtlMs(model)`（model.promptCache[retention]，retention=PI_CACHE_RETENTION==="long"?"long":"short"）
+  ?? `isDeepseekModel` ? 12h : 300s。
 
-- `CACHE` 条 24 格 + 中央 tick，filled = round(剩余/300×24)；百分比 = 剩余%。
-- `BUFFER` 子条 10 格 = ceil(剩余/30s)，与时钟联动（缓存 TTL 恰 5 分钟）。
-- 高度：边框 1 + 空行 1 + 大数字 5 + 空行 1 + CACHE 1 + API 1 + STATUS 1 + 边框 1 = 12 行。
-- 宽度适配：≥62 完整 → 56-61 CACHE 条收缩(最小12格) → 48-55 删 API 子行(高11) → 36-47 弃大数字改单行 `残量 MM:SS:cc`(高8) → <36 回退简约版。
+## 挂载与配置
+- `ctx.ui.setWidget(FACC_WIDGET_KEY, factory, { placement })`（editor 上/下插槽，**不替换** footer；
+  setFooter 是清空式替换语义，会覆盖内置 footer，弃用）。
+- placement 默认 `belowEditor`，存 `~/.pi/agent/facc.json`。
+- 命令 **`/facc`**：配置菜单（第一个菜单 = widget 位置 aboveEditor/belowEditor，改后 tear down + reinstall 移动）。
 
-## 三、5×3 全块大数字字模（替换 K3 的 3 行半块字模）
-
-```
-0 ███  1  █   2 ███  3 ███  4 █ █  5 ███  6 ███  7 ███  8 ███  9 ███
-  █ █    ██     █     █     █ █   █     █       █     █ █     █ █
-  █ █     █    ███   ███   ███   ███   ███     █     ███    ███
-  █ █     █    █       █     █     █   █ █     █     █ █      █
-  ███    ███   ███   ███     █   ███   ███     █     ███    ███
-```
-
-冒号 `:` = 3 宽 5 行：`   / █ /   / █ /   `（第 1、3 行有点，1Hz 闪烁，高光色）。
-
-## 四、交互 / 动效
-1. 点击 footer 区域在「简约 ↔ 完整」间切换，切后 `invalidate()` + 模式持久化；普通（非全屏）模式补一个键盘热键降级。
-2. `/eva_cache_countdown`：BGM on/off、alarm on/off、手动切模式。
-3. 刷新 `setInterval(50ms)` + `tui.requestRender()`；百分秒 20fps 滚动，冒号 1Hz 由同一 tick 驱动。
-4. 首次 ≤2:30 全 UI 翻红，alarm on 则播警告音；到 0:00 STATUS→EMERGENCY（白 on `#DD264A` 1Hz）并播 alarm。
-5. 闪烁只在红段（DANGER+边框 2Hz、EMERGENCY 1Hz、末段最后 2 格 2Hz）；黄段仅冒号 1Hz。
-6. 每帧 `render(width)` 内所有行 `visibleWidth/truncateToWidth`，日文按宽 2。
-
-## 五、取舍理由
-- **5×3 全块字模**：K3 的 3 行半块字模（`█▀▀█/▄▄█`）细且易对不齐；全块 `█` 像素级稳定、清晰，代价是完整版多 2 行（11→12）。
-- **从右烧尽 + 中央 tick**：一眼读「剩多少」与「距 2:30 悬崖多远」，越界全局翻红，戏剧性更强。
-- **琥珀/玫红 + NERV 绿**：黄段取 TV 版 V1 琥珀发光 `#FB9430`，红段取新剧场版 DANGER 玫红 `#DD264A`；NERV 绿 `#6CA623` 专表 NORMAL/安全（EVA 通奏低色「绿=平穏」）。所有色值来自 `eva-timer-analysis` 逐帧直方图实测，非凭空拍板。
-- **BUFFER 子条与时钟联动**：缓存 TTL 5 分钟与倒计时互文，▮ 数 = ceil(剩余/30s)。
-- **红段才闪烁**：符合 EVA 情绪曲线，避免日常视觉疲劳。
+## 取舍理由
+- **一行（widget 而非多行/多行完整版）**：早期设计有「一级·一行简约版 + 二级·多行完整版」两级，
+  用户定稿「一级·一行简约版 通过，仅支持一行，多行完整版取消」——只保留一行，删掉 5×3 大数字字模与多行边框。
+- **braille 垂直 3 级 `⣀⣤⣶⣿`**：比 ░█ 更密、比 5×3 大数字省行高，20 格 × 3 级 = 60 步分辨率，仍从右烧尽 + 中央 tick。
+- **从右烧尽 + 中央 tick**：一眼读「剩多少」与「距分水岭多远」；五段越界逐步变红，戏剧性强。
+- **五段等分（TTL/5）而非四段**：绿/黄/橙/红/红闪五档，末段（≤60s）反相闪烁 = 倒计时最后的压迫感；色号全部抄 pi-fleet 而非凭空拍板。
+- **红段才反相闪烁**：符合 EVA 情绪曲线，避免日常视觉疲劳（仅末段 60s 反相 + 末 20s 条尾闪烁）。
+- **音乐（BGM）/alarm 已删**：早期有 BGM/alarm 与 `/eva_cache_countdown` 命令占位，用户定稿「音乐暂时取消」后
+  于 commit ffd9834 整体删除（alarmEnabled/prevSec/bell/命令注册），仅保留 `/facc`。
