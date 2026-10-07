@@ -4,7 +4,7 @@ import { createRequire } from "node:module";
 const require = createRequire("/home/sim/.pi/agent/install/releases/1.0.4/node_modules/");
 const { createJiti } = require("jiti");
 const jiti = createJiti(import.meta.url);
-const { buildCountdownLine, buildDeepseekLine } = await jiti.import(new URL("./index.ts", import.meta.url).href);
+const { buildCountdownLine, buildDeepseekLine, buildInfiniteLine } = await jiti.import(new URL("./index.ts", import.meta.url).href);
 
 const RESET = "\x1b[0m";
 // 与 preview.mjs 相同的真色上色（fg 始终输出；bg 可选）
@@ -36,6 +36,9 @@ const dsCases = [
 ];
 for (const c of dsCases) console.log(buildDeepseekLine(c.remain, 12 * 3600 * 1000, c.hit, style), " ", c.label);
 console.log(buildCountdownLine(299_000, 300_000, 0, style), " ", "DeepSeek ≤300s → 接入短逻辑（绿 04:59:00 NORMAL）");
+
+// 本地/自托管 API ∞ 模式（无 promptCache 声明、非 DeepSeek、baseUrl 本地）：仅静态蓝徽章
+console.log(buildInfiniteLine(style), " ", "本地 ∞（仅徽章，无条/∞/状态/●）");
 
 // 变体B：无进度条，纯文字版（贴用户草图）
 {

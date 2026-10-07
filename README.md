@@ -44,6 +44,11 @@ GIFs are produced from the real extension code (`demo-frames.mjs` frames, played
    CACHE DEEPSEEK  ⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿│⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿  11:59:50   長 EXTERNAL 期   HIT 96%
   ```
   DeepSeek's prompt cache has no fixed TTL (empirically ≥ 12 h), so you get a blue 12-hour macro countdown with `HH:MM:SS`. The **HIT %** badge shows the real cache-hit rate of the last response, derived for free from `usage.prompt_cache_hit_tokens` (pi maps it to `cacheRead`). At 5 minutes left it switches seamlessly into the five-phase short logic.
+- **Local/self-hosted ∞ mode** (models that don't declare `promptCache`, aren't DeepSeek, and whose `baseUrl` points at loopback/RFC-1918 — vLLM, SGLang, ollama, qwen-local, …):
+  ```
+   CACHE 無限
+  ```
+  A local server's KV cache lives in the server process with no TTL, so a countdown would be a lie — you get just a static blue badge: no gauge, no clock, no `●`, no blinking. It shares DeepSeek's blue (both are the "long-term, no need to watch" family).
 
 ## Install
 
@@ -57,7 +62,7 @@ pi install https://github.com/fishing-dev-sm/pi-famous-anime-cache-countdown
 
 | Command | Action |
 |---|---|
-| `/facc` | Settings menu. First menu: widget placement `aboveEditor` / `belowEditor` / `footer` (persisted to `~/.pi/agent/facc.json`, applied live) |
+| `/facc` | Settings menu. Menu 1: widget placement `aboveEditor` / `belowEditor` / `footer`; menu 2: theme `theme1` (language palette, default) / `theme2` (original Tailwind) (persisted to `~/.pi/agent/facc.json`, applied live) |
 
 ## Development
 

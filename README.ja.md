@@ -44,6 +44,11 @@ GIF は実拡張コードから生成されます（`demo-frames.mjs` でフレ�
    CACHE DEEPSEEK  ⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿│⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿  11:59:50   長 EXTERNAL 期   HIT 96%
   ```
   DeepSeek のプロンプトキャッシュには固定 TTL がありません（実測 ≥ 12 時間）。そのため青い 12 時間マクロカウントダウンを `HH:MM:SS` で表示します。**HIT %** バッジは前回レスポンスの実キャッシュヒット率を示し、`usage.prompt_cache_hit_tokens` から無料で取得します（pi は `cacheRead` にマップ）。残り 5 分で 5 フェーズの短ロジックへシームレスに切り替わります。
+- **ローカル/セルフホスト ∞ モード**（`promptCache` を宣言せず、DeepSeek でもなく、`baseUrl` が loopback/プライベートアドレスのモデル——vLLM、SGLang、ollama、qwen-local など）：
+  ```
+   CACHE 無限
+  ```
+  ローカル server の KV キャッシュは server プロセスのメモリに生きており TTL がないため、カウントダウンは誤解を招くだけです。代わりに静的な青いバッジだけを表示：ゲージなし、時計なし、`●` なし、点滅なし。DeepSeek と同じ青系（どちらも「長期・見守り不要」のファミリー）。
 
 ## インストール
 
@@ -57,7 +62,7 @@ pi install https://github.com/fishing-dev-sm/pi-famous-anime-cache-countdown
 
 | コマンド | 動作 |
 |---|---|
-| `/facc` | 設定メニュー。最初のメニュー：ウィジェット位置 `aboveEditor` / `belowEditor` / `footer`（`~/.pi/agent/facc.json` に永続化、ライブ反映） |
+| `/facc` | 設定メニュー。メニュー1：ウィジェット位置 `aboveEditor` / `belowEditor` / `footer`；メニュー2：テーマ `theme1`（言語ブランド色、デフォルト）/ `theme2`（オリジナル Tailwind）（`~/.pi/agent/facc.json` に永続化、ライブ反映） |
 
 ## 開発
 

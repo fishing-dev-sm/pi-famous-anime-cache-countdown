@@ -44,6 +44,11 @@ GIF 由真实扩展代码生成（`demo-frames.mjs` 出帧，经 `player.mjs` �
    CACHE DEEPSEEK  ⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿│⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿  11:59:50   長 EXTERNAL 期   HIT 96%
   ```
   DeepSeek 的提示词缓存没有固定 TTL（实测 ≥ 12 小时），因此你得到一个蓝色的 12 小时宏观倒计时，以 `HH:MM:SS` 显示。**HIT %** 徽章显示上次响应的真实缓存命中率，免费取自 `usage.prompt_cache_hit_tokens`（pi 映射为 `cacheRead`）。剩余 5 分钟时无缝切换到五阶段短逻辑。
+- **本地/自托管 ∞ 模式**（未声明 `promptCache`、非 DeepSeek、且 `baseUrl` 指向 loopback/私网的模型——vLLM、SGLang、ollama、qwen-local 等）：
+  ```
+   CACHE 無限
+  ```
+  本地 server 的 KV cache 活在 server 进程内存里，没有 TTL——倒计时只会误导。所以只显示一个静态蓝徽章：无条、无时钟、无 `●`、无闪烁。与 DeepSeek 共用蓝系（同属「长期、不用盯」的一族）。
 
 ## 安装
 
@@ -57,7 +62,7 @@ pi install https://github.com/fishing-dev-sm/pi-famous-anime-cache-countdown
 
 | 命令 | 作用 |
 |---|---|
-| `/facc` | 设置菜单。第一个菜单：widget 位置 `aboveEditor` / `belowEditor` / `footer`（持久化到 `~/.pi/agent/facc.json`，实时生效） |
+| `/facc` | 设置菜单。菜单 1：widget 位置 `aboveEditor` / `belowEditor` / `footer`；菜单 2：主题 `theme1`（语言品牌色，默认）/ `theme2`（原版 Tailwind）（持久化到 `~/.pi/agent/facc.json`，实时生效） |
 
 ## 开发
 

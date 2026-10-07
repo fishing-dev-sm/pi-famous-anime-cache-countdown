@@ -8,13 +8,17 @@
  * 窄宽度自适应三档缩略（tui_compact_design.md v3，preview-compact.mjs 预览）：
  *   L1 ≤60格：丢中央 tick + 盲文 20→10；L2 ≤44格：盲文→4 + 状态中英取短（注 CAUT 意）；
  *   L3 ≤26格：盲文→2 + cc/限界 才丢。铁律：盲文格数永远最先砍，● 永不丢。
- *   阈值（最坏宽度，实测）：Anthropic 66/54/43/25 · DeepSeek 76/65/49/18，<最小格才 truncate 兜底
+ *   阈值（最坏宽度，实测）：Anthropic 66/54/43/25 · DeepSeek 76/65/49/18，<最小格才 truncate 兜底（無限仅徽章不适用）
  * DeepSeek 模型（provider/id 匹配，无 promptCache 声明、实测 cache 活 ≥12h）→ 12h 宏观倒计时：
  *   [CACHE DEEPSEEK] [braille 条] [HH:MM:SS] [長 EXTERNAL 期] [HIT 99%]，剩余 ≤300s 时无缝接入上方五段短逻辑
- * 其他无声明模型（qwen-local 等）→ 兜底 300s 短逻辑
+ * 本地/自托管 API（无 promptCache 声明、非 DeepSeek、baseUrl 指向 loopback/RFC1918 私网：
+ *   qwen-local、vLLM、ollama 等）→ KV cache 无 TTL，不倒计时，只显示静态蓝徽章 [CACHE 無限]
+ *   （与 DeepSeek 同属长期档、共用蓝系；无 braille 条/无 ∞/无状态徽章/无 ●）
+ * 其他无声明云端模型（k3 等）→ 兜底 300s 短逻辑
  *
  * 测试：pi --extension ./index.ts
- * 命令：/facc 配置菜单（第一个菜单 = 位置 aboveEditor/belowEditor/footer；
+ * 命令：/facc 配置菜单（菜单 1 = 位置 aboveEditor/belowEditor/footer；
+ *       菜单 2 = 主题配色 theme1 语言品牌色(默认) / theme2 原版 Tailwind；
  *       footer = ctx.ui.setStatus 进入 footer 体系（pi-slim-footer 插件行/内置状态行），不接管 footer）
  */
 
@@ -26,7 +30,7 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 
 const FALLBACK_TTL_MS = 5 * 60 * 1000; // Anthropic short retention = 300s；也是 DeepSeek 模式最后 5 分钟接入短逻辑的窗口
-const DEEPSEEK_TTL_MS = 12 * 3600 * 1000; // 无 promptCache 声明的模型（DeepSeek）：实测 cache ≥12h 存活（2026-10 TTL probe）
+const DEEPSEEK_TTL_MS = 12 * 3600 * 1000; // DeepSeek（无 promptCache 声明）：实测 cache ≥12h 存活（2026-10 TTL probe）
 
 // 缩略档位（tui_compact_design.md v3）：收窄丢列、永不截断。
 // 丢弃铁律：盲文格数永远最先砍（20→10→4→2），中央 tick 仅完整版，● 任何档禁止丢弃。
@@ -42,17 +46,22 @@ const CONFIG_PATH = join(homedir(), ".pi", "agent", "facc.json");
 
 type Placement = "aboveEditor" | "belowEditor" | "footer";
 
-/** 读配置（不存在/损坏 → 默认 belowEditor）。可随时加新键。 */
-function loadPlacement(): Placement {
+type FaccConfig = { placement: Placement; theme: ThemeId };
+
+/** 读配置（不存在/损坏 → 默认 belowEditor + theme1）。可随时加新键。 */
+function loadConfig(): FaccConfig {
 	try {
 		const j = JSON.parse(readFileSync(CONFIG_PATH, "utf8"));
-		return j.placement === "aboveEditor" || j.placement === "footer" ? j.placement : "belowEditor";
+		return {
+			placement: j.placement === "aboveEditor" || j.placement === "footer" ? j.placement : "belowEditor",
+			theme: j.theme === "theme2" ? "theme2" : "theme1", // theme1 = 默认
+		};
 	} catch {
-		return "belowEditor";
+		return { placement: "belowEditor", theme: "theme1" };
 	}
 }
 
-type PromptCacheModel = { provider?: string; id?: string; promptCache?: { short?: number; long?: number } };
+type PromptCacheModel = { provider?: string; id?: string; baseUrl?: string; promptCache?: { short?: number; long?: number } };
 
 /** 仅限 DeepSeek（provider 或 id 匹配）——其 cache 无固定 TTL、实测 ≥12h；
  *  其他无声明模型（qwen-local 等）不适用 12h 模式。 */
@@ -60,6 +69,24 @@ function isDeepseekModel(model: PromptCacheModel | undefined | null): boolean {
 	const p = (model?.provider ?? "").toLowerCase();
 	const id = (model?.id ?? "").toLowerCase();
 	return p === "deepseek" || p.includes("deepseek") || id.startsWith("deepseek");
+}
+
+/** 本地/自托管 API：baseUrl 主机是 loopback（localhost/127.x/::1/0.0.0.0）或 RFC1918 私网
+ *  （10/8、172.16/12、192.168/16）——这类 server 的 KV cache 活在进程内存里，无 TTL。
+ *  仅对未声明 promptCache 的模型有意义（调用方先查 declaredTtlMs / isDeepseekModel）。 */
+function isLocalModel(model: PromptCacheModel | undefined | null): boolean {
+	let host: string;
+	try {
+		host = new URL(model?.baseUrl ?? "").hostname.toLowerCase();
+	} catch {
+		return false;
+	}
+	if (host === "localhost" || host.endsWith(".localhost") || host === "::1" || host === "[::1]" || host === "0.0.0.0") return true;
+	const m = host.match(/^(\d+)\.(\d+)\.(\d+)\.(\d+)$/);
+	if (!m) return false;
+	const a = Number(m[1]);
+	const b = Number(m[2]);
+	return a === 127 || a === 10 || (a === 172 && b >= 16 && b <= 31) || (a === 192 && b === 168);
 }
 
 /** 模型自己声明的 TTL（无声明 → null，如 DeepSeek）。与 pi 内置 cache-warmer 的
@@ -70,23 +97,97 @@ function declaredTtlMs(model: PromptCacheModel | undefined | null): number | nul
 	return typeof sec === "number" && sec > 0 ? sec * 1000 : null;
 }
 
-/** 有效 TTL：有声明用声明；DeepSeek 按实测 12h；其他无声明模型兜底 300s。 */
-function ttlMsOf(model: PromptCacheModel | undefined | null): number {
-	return declaredTtlMs(model) ?? (isDeepseekModel(model) ? DEEPSEEK_TTL_MS : FALLBACK_TTL_MS);
-}
 
-// 五段等分：总 TTL 均分 5 段（300s → 每 60s 一段），色号沿用 preview.mjs 调色板
-const PHASES = [
-	{ main: "#22c55e", hi: "#4ade80", sub: "#15803d", tick: "#16a34a" }, // 0 绿 sec > 240   CACHE NORMAL
-	{ main: "#eab308", hi: "#facc15", sub: "#a16207", tick: "#ca8a04" }, // 1 黄 240≥sec>180  注 CAUTION 意
-	{ main: "#f97316", hi: "#fb923c", sub: "#c2410c", tick: "#ea580c" }, // 2 橙 180≥sec>120  危 DANGER 険
-	{ main: "#ef4444", hi: "#f87171", sub: "#b91c1c", tick: "#dc2626" }, // 3 红 120≥sec>60  緊 EMERGENCY 急
-	{ main: "#ef4444", hi: "#f87171", sub: "#b91c1c", tick: "#dc2626" }, // 4 红闪 sec ≤ 60   緊 EMERGENCY 急（反相闪烁）
-];
-const DANGER_BG = "#b91c1c";
-const PULSE_GREEN = "#86efac"; // ● 运行指示：非常淡的绿色
-// DeepSeek 12h 宏观模式配色：蓝系（冷静/长期，与绿 NORMAL 区分）
-const DEEPSEEK_PHASE = { main: "#3b82f6", hi: "#60a5fa", sub: "#1d4ed8", tick: "#2563eb" };
+// ── 主题（/facc 菜单切换）：theme1 = 语言品牌色（默认），theme2 = 原版 Tailwind ──
+type ThemeId = "theme1" | "theme2";
+type Phase = { main: string; hi: string; sub: string; tick: string };
+type Theme = {
+	id: ThemeId;
+	label: string;
+	phases: [Phase, Phase, Phase, Phase, Phase];
+	dangerBg: string;
+	pulseGreen: string;
+	longTermPhase: Phase; // 长期档共用蓝系：DeepSeek 12h 宏观 + 本地 ∞（无 TTL 不倒计时）
+};
+
+// HSL 派生：只给主色，hi 提亮（400 级）/ sub 压暗（700 级）/ tick 居中偏暗（600 级）。
+function hexToHsl(hex: string): [number, number, number] {
+	const [r, g, b] = hexToRgb(hex).map((v) => v / 255);
+	const max = Math.max(r, g, b);
+	const min = Math.min(r, g, b);
+	const l = (max + min) / 2;
+	if (max === min) return [0, 0, l * 100];
+	const d = max - min;
+	const s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+	let h: number;
+	if (max === r) h = (g - b) / d + (g < b ? 6 : 0);
+	else if (max === g) h = (b - r) / d + 2;
+	else h = (r - g) / d + 4;
+	return [h * 60, s * 100, l * 100];
+}
+function hslToHex(h: number, s: number, l: number): string {
+	h = ((h % 360) + 360) % 360;
+	s /= 100;
+	l /= 100;
+	const c = (1 - Math.abs(2 * l - 1)) * s;
+	const x = c * (1 - Math.abs((h / 60) % 2 - 1));
+	const m = l - c / 2;
+	let r = 0;
+	let g = 0;
+	let b = 0;
+	if (h < 60) { r = c; g = x; b = 0; }
+	else if (h < 120) { r = x; g = c; b = 0; }
+	else if (h < 180) { r = 0; g = c; b = x; }
+	else if (h < 240) { r = 0; g = x; b = c; }
+	else if (h < 300) { r = x; g = 0; b = c; }
+	else { r = c; g = 0; b = x; }
+	const toHex = (v: number) => Math.round((v + m) * 255).toString(16).padStart(2, "0");
+	return `#${toHex(r)}${toHex(g)}${toHex(b)}`;
+}
+const shiftLightness = (hex: string, dl: number): string => {
+	const [h, s, l] = hexToHsl(hex);
+	return hslToHex(h, s, Math.max(0, Math.min(100, l + dl)));
+};
+const derivePhase = (main: string): Phase => ({
+	main,
+	hi: shiftLightness(main, 18),
+	sub: shiftLightness(main, -18),
+	tick: shiftLightness(main, -9),
+});
+
+// theme1（默认）：编程语言品牌色 —— 绿 Vue / 黄 custom / 橙 Rust / 红 Scala / 蓝 TypeScript
+const THEME1: Theme = {
+	id: "theme1",
+	label: "language palette (Vue/Scala/Rust/TS)",
+	phases: [
+		derivePhase("#41b883"), // 0 绿 sec > 240   CACHE NORMAL
+		derivePhase("#ffc85a"), // 1 黄 240≥sec>180  注 CAUTION 意
+		derivePhase("#dea584"), // 2 橙 180≥sec>120  危 DANGER 険
+		derivePhase("#c22d40"), // 3 红 120≥sec>60  緊 EMERGENCY 急
+		derivePhase("#c22d40"), // 4 红闪 sec ≤ 60   緊 EMERGENCY 急（反相闪烁）
+	],
+	dangerBg: shiftLightness("#c22d40", -18),
+	pulseGreen: shiftLightness("#41b883", 18), // ● 运行指示：淡绿
+	longTermPhase: derivePhase("#3178c6"), // 蓝系（长期：冷静/无需盯倒计时，与绿 NORMAL 区分）
+};
+
+// theme2：原版 Tailwind 调色板（500/400/700/600 级）
+const THEME2: Theme = {
+	id: "theme2",
+	label: "original (Tailwind)",
+	phases: [
+		{ main: "#22c55e", hi: "#4ade80", sub: "#15803d", tick: "#16a34a" },
+		{ main: "#eab308", hi: "#facc15", sub: "#a16207", tick: "#ca8a04" },
+		{ main: "#f97316", hi: "#fb923c", sub: "#c2410c", tick: "#ea580c" },
+		{ main: "#ef4444", hi: "#f87171", sub: "#b91c1c", tick: "#dc2626" },
+		{ main: "#ef4444", hi: "#f87171", sub: "#b91c1c", tick: "#dc2626" },
+	],
+	dangerBg: "#b91c1c",
+	pulseGreen: "#86efac",
+	longTermPhase: { main: "#3b82f6", hi: "#60a5fa", sub: "#1d4ed8", tick: "#2563eb" },
+};
+
+let ACTIVE: Theme = THEME1; // 默认 theme1；default export 里按 ~/.pi/agent/facc.json 覆盖
 
 const phaseOf = (sec: number, totalSec: number) => {
 	const b = totalSec / 5;
@@ -96,7 +197,6 @@ const phaseOf = (sec: number, totalSec: number) => {
 /** 上色函数签名：fg 十六进制，bg 可选（badge 用） */
 export type StyleFn = (text: string, fgHex: string, bgHex?: string) => string;
 
-type Phase = (typeof PHASES)[number];
 const LEVELS = ["⣀", "⣤", "⣶", "⣿"]; // 0=空轨, 1..3=垂直填充级（底部点阵→满）
 
 /** braille 条：每格垂直 3 级、从右往左烧尽、末段 sec<=20 最后 2 格 500ms 闪烁。
@@ -124,10 +224,10 @@ const STATUS_L3 = [" 常 ", " 注 ", " 危 ", " 緊 ", " 緊 "];
 function buildStatus(e: number, P: Phase, nowMs: number, tier: Tier, style: StyleFn): string {
 	const text = (tier === "L2" ? STATUS_L2 : tier === "L3" ? STATUS_L3 : STATUS_FULL)[e];
 	if (e <= 2) return style(text, contrastFg(P.main), P.main);
-	if (e === 3) return style(text, "#ffffff", DANGER_BG);
+	if (e === 3) return style(text, "#ffffff", ACTIVE.dangerBg);
 	return Math.floor(nowMs / 400) % 2 === 0
-		? style(text, "#ffffff", DANGER_BG)
-		: style(text, DANGER_BG, P.hi); // 灭相：暗红字/亮红底 反相
+		? style(text, "#ffffff", ACTIVE.dangerBg)
+		: style(text, ACTIVE.dangerBg, P.hi); // 灭相：暗红字/亮红底 反相
 }
 
 /** 反白时间：withCc = MM:SS:cc（cc 末位 sub 暗色弱化，LiveSplit 式）；否则 MM:SS（L3，反白保留） */
@@ -147,28 +247,28 @@ function buildTime(sec: number, centi: number, P: Phase, withCc: boolean, style:
 export function buildCountdownLine(remainMs: number, totalMs: number, nowMs: number, style: StyleFn, tier: Tier = "full"): string {
 	const cells = TIER_GAUGE[tier];
 	const withTick = tier === "full"; // 中央 tick 仅完整版（L1 起丢）
-	const P3 = PHASES[3];
+	const P3 = ACTIVE.phases[3];
 
 	// 限界突破（过期）：红色定格 —— 空条 + 红色时间不反白 + 无 ●（「死了才不闪」）
 	if (remainMs <= 0) {
 		const bar = buildBar(cells, 0, totalMs / 1000, P3, nowMs, withTick, style);
 		if (tier === "full") {
 			const titleBadge = style(" CACHE EXPIRED 限界突破 ", contrastFg(P3.main), P3.main);
-			return `${titleBadge} ${bar} ${style("00:00:00", P3.main)} ${style("终 OVER 了", contrastFg(DANGER_BG), DANGER_BG)}`;
+			return `${titleBadge} ${bar} ${style("00:00:00", P3.main)} ${style("终 OVER 了", contrastFg(ACTIVE.dangerBg), ACTIVE.dangerBg)}`;
 		}
 		if (tier === "L3") {
-			return `${style(" 突破 ", contrastFg(P3.main), P3.main)} ${bar} ${style("00:00", P3.main)} ${style(" 终 ", contrastFg(DANGER_BG), DANGER_BG)}`;
+			return `${style(" 突破 ", contrastFg(P3.main), P3.main)} ${bar} ${style("00:00", P3.main)} ${style(" 终 ", contrastFg(ACTIVE.dangerBg), ACTIVE.dangerBg)}`;
 		}
 		const badge = style(" CACHE 限界突破 ", contrastFg(P3.main), P3.main);
 		const status = tier === "L1" ? " 终 OVER 了 " : " 终了 ";
-		return `${badge} ${bar} ${style("00:00:00", P3.main)} ${style(status, contrastFg(DANGER_BG), DANGER_BG)}`;
+		return `${badge} ${bar} ${style("00:00:00", P3.main)} ${style(status, contrastFg(ACTIVE.dangerBg), ACTIVE.dangerBg)}`;
 	}
 
 	const totalSec = totalMs / 1000;
 	const sec = Math.floor(Math.max(0, remainMs) / 1000);
 	const centi = Math.floor((Math.max(0, remainMs) % 1000) / 10);
 	const e = phaseOf(sec, totalSec);
-	const P = PHASES[e];
+	const P = ACTIVE.phases[e];
 
 	// 1. 反白徽章（底=当前段 main，字色按 WCAG 亮度选黑/白）；L3 砍 限界
 	const titleBadge = style(tier === "L3" ? " CACHE " : " CACHE 限界 ", contrastFg(P.main), P.main);
@@ -181,7 +281,7 @@ export function buildCountdownLine(remainMs: number, totalMs: number, nowMs: num
 	const timeBadge = buildTime(sec, centi, P, tier !== "L3", style);
 
 	// 4. ● 运行指示（铁律：任何档禁止丢弃）：淡绿 90ms 独立相位闪烁（与 83ms 渲染 tick 错开）
-	const pulse = Math.floor(nowMs / 90) % 2 === 0 ? style("●", PULSE_GREEN) : " ";
+	const pulse = Math.floor(nowMs / 90) % 2 === 0 ? style("●", ACTIVE.pulseGreen) : " ";
 
 	// 5. 状态徽章（文案随档取短）
 	const status = buildStatus(e, P, nowMs, tier, style);
@@ -197,7 +297,7 @@ export function buildCountdownLine(remainMs: number, totalMs: number, nowMs: num
  * DeepSeek 免费返回）；remain ≤300s 不由本函数渲染（接入 buildCountdownLine 短逻辑）。
  */
 export function buildDeepseekLine(remainMs: number, totalMs: number, hitRate: number | null, style: StyleFn, tier: Tier = "full"): string {
-	const P = DEEPSEEK_PHASE;
+	const P = ACTIVE.longTermPhase;
 	const totalSec = totalMs / 1000;
 	const sec = Math.floor(Math.max(0, remainMs) / 1000);
 	const bar = buildBar(TIER_GAUGE[tier], sec, totalSec, P, 0, tier === "full", style);
@@ -215,6 +315,16 @@ export function buildDeepseekLine(remainMs: number, totalMs: number, hitRate: nu
 	if (tier === "L2") return `${titleBadge} ${bar} ${timeBadge} ${status}`; // HIT% 只是个百分比，本档起丢
 	const hit = style(hitRate === null ? " HIT --% " : ` HIT ${Math.round(hitRate * 100)}% `, contrastFg(P.sub), P.sub);
 	return `${titleBadge} ${bar} ${timeBadge} ${status} ${hit}`;
+}
+
+/**
+ * 本地/自托管 API ∞ 模式（纯函数）：本地 KV cache 无 TTL，倒计时无意义——
+ * 只显示静态蓝徽章 [CACHE 無限]（与 DeepSeek 共用蓝系，同属长期档）。
+ * 无 braille 条、无 ∞、无状态徽章、无 ●；宽度无关，不分档。
+ */
+export function buildInfiniteLine(style: StyleFn): string {
+	const P = ACTIVE.longTermPhase;
+	return style(" CACHE 無限 ", contrastFg(P.main), P.main);
 }
 
 function hexToRgb(hex: string): [number, number, number] {
@@ -252,11 +362,13 @@ export default function (pi: ExtensionAPI) {
 	let timer: ReturnType<typeof setInterval> | null = null;
 	let tuiRef: TUI | null = null;
 	let ctxRef: ExtensionContext | null = null;
-	let placement: Placement = loadPlacement();
+	const cfg = loadConfig();
+	let placement: Placement = cfg.placement;
+	ACTIVE = cfg.theme === "theme2" ? THEME2 : THEME1; // 主题读自 config（默认 theme1）
 
 	const saveConfig = () => {
 		try {
-			writeFileSync(CONFIG_PATH, JSON.stringify({ placement }, null, 2));
+			writeFileSync(CONFIG_PATH, JSON.stringify({ placement, theme: ACTIVE.id }, null, 2));
 		} catch {
 			/* 配置写不进去就算了，本次会话内生效 */
 		}
@@ -288,11 +400,15 @@ export default function (pi: ExtensionAPI) {
 		if (lastCacheAt === null) return null;
 		const now = Date.now();
 		const declared = declaredTtlMs(ctxRef?.model);
-		const deepseek = declared === null && isDeepseekModel(ctxRef?.model);
-		const ttlMs = declared ?? (deepseek ? DEEPSEEK_TTL_MS : FALLBACK_TTL_MS);
+		// 本地/自托管 API（无声明、非 DeepSeek、baseUrl 为 loopback/私网）：KV cache 无 TTL，
+		// 不倒计时，静态 ∞ 行；其他无声明云端模型（k3 等）仍兜底 300s 短逻辑
+		if (declared === null && !isDeepseekModel(ctxRef?.model) && isLocalModel(ctxRef?.model)) {
+			return truncateToWidth(buildInfiniteLine(style), width);
+		}
+		const ttlMs = declared ?? (isDeepseekModel(ctxRef?.model) ? DEEPSEEK_TTL_MS : FALLBACK_TTL_MS);
 		const remainMs = lastCacheAt + ttlMs - now;
 		// DeepSeek 模式：>300s 走 12h 宏观行；≤300s 无缝接入五段短逻辑（窗口=300s）
-		const dsMacro = deepseek && remainMs > FALLBACK_TTL_MS;
+		const dsMacro = declared === null && ttlMs === DEEPSEEK_TTL_MS && remainMs > FALLBACK_TTL_MS;
 		// 宽度自适应（tui_compact_design.md v3）：收窄丢列、永不截断——
 		// 按各档最坏宽度阈值从 full 到 L3 取第一个放得下的档；<L3 最小宽度才 truncate 兜底
 		const tier = pickTier(width, dsMacro ? DEEPSEEK_MIN_W : COUNTDOWN_MIN_W);
@@ -396,7 +512,7 @@ export default function (pi: ExtensionAPI) {
 				ctx.ui.notify(`facc: no UI in this mode — edit ${CONFIG_PATH} directly`, "warning");
 				return;
 			}
-			// First menu: widget placement aboveEditor / belowEditor / footer
+			// 菜单 1：widget 位置 aboveEditor / belowEditor / footer
 			const cur = placement;
 			const choice = await ctx.ui.select("facc settings · widget placement", [
 				`aboveEditor  above the editor (below the status line)${cur === "aboveEditor" ? "  ● current" : ""}`,
@@ -405,16 +521,32 @@ export default function (pi: ExtensionAPI) {
 			]);
 			if (!choice) return; // cancelled
 			const next: Placement = choice.startsWith("aboveEditor") ? "aboveEditor" : choice.startsWith("footer") ? "footer" : "belowEditor";
-			if (next === cur) {
-				ctx.ui.notify(`facc: placement unchanged (${next})`, "info");
+
+			// 菜单 2：主题配色 theme1（默认，语言品牌色）/ theme2（原版 Tailwind）
+			const curTheme = ACTIVE.id;
+			const themeChoice = await ctx.ui.select("facc settings · theme", [
+				`theme1  ${THEME1.label} (default)${curTheme === "theme1" ? "  ● current" : ""}`,
+				`theme2  ${THEME2.label}${curTheme === "theme2" ? "  ● current" : ""}`,
+			]);
+			if (!themeChoice) return; // cancelled
+			const nextTheme: ThemeId = themeChoice.startsWith("theme1") ? "theme1" : "theme2";
+
+			const placementChanged = next !== cur;
+			const themeChanged = nextTheme !== curTheme;
+			if (placementChanged) placement = next;
+			if (themeChanged) ACTIVE = nextTheme === "theme1" ? THEME1 : THEME2;
+			if (!placementChanged && !themeChanged) {
+				ctx.ui.notify("facc: settings unchanged", "info");
 				return;
 			}
-			placement = next;
 			saveConfig();
-			// tear down + reinstall = move（uninstall 幂等清两种挂法；footer ↔ widget 互移同样适用）
+			// tear down + reinstall = move（uninstall 幂等清两种挂法；footer ↔ widget 互移、换主题同样适用）
 			uninstall(ctx);
 			install(ctx);
-			ctx.ui.notify(`facc: widget placement → ${next}`, "info");
+			const msg = [placementChanged ? `placement → ${next}` : null, themeChanged ? `theme → ${nextTheme}` : null]
+				.filter(Boolean)
+				.join(", ");
+			ctx.ui.notify(`facc: ${msg}`, "info");
 		},
 	});
 

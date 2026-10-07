@@ -1,35 +1,44 @@
 # facc E2E report
 
-- date: 2026-10-06 22:24:00
+- date: 2026-10-07 15:18:18
 - pi: 1.0.4
 
 - [PASS] A1 k3 首次请求后出现倒计时
 - [PASS] A2 待机（请求前）不显示 CACHE 限界
 - [PASS] A3 k3 走 300s 短逻辑（绿 NORMAL 徽章）
 - [PASS] A4 k3 不显示蓝色 DEEPSEEK 宏观行 — 回归点：provider=kimi-coding,id=k3 不得判为 deepseek（#3b82f6 也被 swarm 徽章用，只查文本）
-- [PASS] A5 /facc 打开配置菜单
-- [PASS] A6 /facc 切换到 aboveEditor
-- [PASS] A7 /facc 切回 belowEditor
-- [PASS] A8 facc.json 恢复 belowEditor
+- [PASS] A5 /facc 打开位置菜单
+- [PASS] A5b /facc 进入主题菜单
+- [PASS] A6 /facc 切换到 aboveEditor（theme1 保持）
+- [PASS] A7 /facc 切到 theme2
+- [PASS] A7b theme2 渲染原版绿 #22c55e
+- [PASS] A7c facc.json 记录 theme2
+- [PASS] A8 /facc 切回 theme1
+- [PASS] A8b facc.json 记录 theme1
 - [PASS] A9 /facc 切换到 footer
 - [PASS] A10 footer 模式：倒计时行经 setStatus 出现在 footer 体系（真色透传）
 - [PASS] A11 /facc 从 footer 切回 belowEditor
 - [PASS] A12 切回后 widget 档位渲染恢复
-- [PASS] A13 facc.json 恢复 belowEditor
+- [PASS] A13 facc.json 恢复 belowEditor + theme1
 - [PASS] B1 deepseek 请求后出现宏观行
-- [PASS] B2 蓝色徽章配色 #3b82f6
+- [PASS] B2 蓝色徽章配色 #3178c6
 - [PASS] B3 HH:MM:SS 宏观时间（11:5x:xx）
 - [PASS] B4 長 EXTERNAL 期 徽章
 - [PASS] B5 HIT% 徽章（--% 或真实命中率）
 - [PASS] B6 不出现五段短逻辑徽章
 - [PASS] C1 请求发出后倒计时出现（25s TTL）
 - [PASS] C2 待机不显示
-- [PASS] C3 五段按序切换 绿→黄→橙→红→限界突破 — {"green": 0.2, "yellow": 3.6, "orange": 8.6, "red": 13.6, "dangerBg": 13.6, "expired": 24.6}
+- [PASS] C3 五段按序切换 绿→黄→橙→红→限界突破 — {"green": 0.2, "yellow": 3.7, "orange": 8.6, "red": 13.6, "dangerBg": 13.6, "expired": 24.6}
 - [PASS] C4 过期定格 CACHE EXPIRED 限界突破
 - [PASS] C5 过期时间 ~25s（20~35s 区间） — expired at 24.6s
-- [PASS] C6 EMERGENCY 段出现 #b91c1c 深红徽章
+- [PASS] C6 EMERGENCY 段出现 #771c27 深红徽章
 - [PASS] D1 100列=完整版（中央 tick + 全长 NORMAL）
 - [PASS] D2 60列=L1（丢 tick，●/cc/全长状态保留）
 - [PASS] D3 48列=L2（盲文→4，状态中英取短 NORM，●/cc 保留）
 - [PASS] D4 30列=L3（徽章砍 限界、砍 cc，● 仍在=铁律，绿底仍在）
 - [PASS] D5 回到100列=完整版恢复（tick + NORMAL）
+- [PASS] E1 本地模型请求后出现 CACHE 無限 徽章
+- [PASS] E2 待机不显示
+- [PASS] E3 蓝色徽章配色 #3178c6（与 DeepSeek 同属长期档）
+- [PASS] E4 无倒计时/无 gauge 条/无 ●/无状态徽章
+- [PASS] E5 3s 后仍只有静态徽章（无新倒计时帧）

@@ -13,6 +13,8 @@
 - 布局：[反白徽章 CACHE 限界] [20 格 braille 条] [● 运行指示] [反白时间] [状态徽章]
 
 ## 调色板（抄 pi-fleet `packages/pi-agent-swarm/src/color.ts` SWARM_COLORS + Tailwind 色阶）
+
+> 本表 = **theme2（原版 Tailwind）**。默认 **theme1** 换成编程语言品牌色：绿 `#41b883`(Vue) / 黄 `#ffc85a` / 橙 `#dea584`(Rust) / 红 `#c22d40`(Scala) / 蓝 `#3178c6`(TypeScript)，hi/sub/tick 由主色 HSL ±18/±9% 亮度派生。
 | 段 | main（底/主色） | hi（高光） | sub（次级/末位） | tick（分水岭） | 阈值 |
 |---|---|---|---|---|---|
 | 0 绿 | `#22c55e` | `#4ade80` | `#15803d` | `#16a34a` | sec > 240 |
@@ -59,7 +61,20 @@ DeepSeek 无 `promptCache` 声明、实测 cache ≥12h 存活（2026-10 TTL pro
 - 蓝系配色、`HH:MM:SS`（秒级精度，无 cc）、无 ●。
 - `HIT XX%` = 上次响应 usage 真实命中率 `cacheRead/(cacheRead+input)`（DeepSeek 免费返回 prompt_cache_hit_tokens）。
 - 剩余 ≤300s 时无缝接入上方五段短逻辑（300s = 短逻辑窗口）。
-- 分流：仅 `isDeepseekModel`（provider/id 含 deepseek）；其他无声明模型（qwen-local 等）兜底 300s 短逻辑。
+- 分流：仅 `isDeepseekModel`（provider/id 含 deepseek）；本地 API 走下方 ∞ 模式，其他无声明云端模型（k3 等）兜底 300s 短逻辑。
+
+## 本地/自托管 ∞ 模式（buildInfiniteLine）
+本地 server（vLLM / SGLang / ollama / qwen-local 等）的 KV cache 活在 server 进程内存里，没有 TTL——
+倒计时只会误导（给「无限」画 5 分钟倒计时）。故只显示一个静态蓝徽章，无倒计时：
+```
+ CACHE 無限
+```
+- 与 DeepSeek 共用蓝系（`longTermPhase`，同属「长期、不用盯」档）；无 braille 条、无 ∞ 符号、无状态徽章、无 ●、无闪烁。
+- 判定 `isLocalModel`：无 `promptCache` 声明 + 非 DeepSeek + `baseUrl` 主机是 loopback
+  （localhost / 127.x / ::1 / 0.0.0.0）或 RFC1918 私网（10/8、172.16/12、192.168/16）。
+  不用「无声明」一刀切：k3 等无声明云端模型仍走 300s 兜底短逻辑。
+- 首次请求后才出现（待机不显示），宽度无关不分档。
+- E2E：场景 E（127.0.0.1 假本地模型）验证徽章出现 / 待机不显示 / 蓝色 / 无倒计时元件 / 时间推移仍静态。
 
 ## 触发 / 重置逻辑（学习自 pi 内置 cache-warmer，core/sdk.ts:404）
 - **待机不显示**：`lastCacheAt = null` 时 widget 不渲染（session_start 清零，首个请求才安装 widget）。
@@ -73,7 +88,7 @@ DeepSeek 无 `promptCache` 声明、实测 cache ≥12h 存活（2026-10 TTL pro
 - `ctx.ui.setWidget(FACC_WIDGET_KEY, factory, { placement })`（editor 上/下插槽，**不替换** footer；
   setFooter 是清空式替换语义，会覆盖内置 footer，弃用）。
 - placement 默认 `belowEditor`，存 `~/.pi/agent/facc.json`。
-- 命令 **`/facc`**：配置菜单（第一个菜单 = widget 位置 aboveEditor/belowEditor，改后 tear down + reinstall 移动）。
+- 命令 **`/facc`**：配置菜单（菜单 1 = widget 位置 aboveEditor/belowEditor/footer；菜单 2 = 主题 theme1 语言品牌色(默认)/theme2 原版 Tailwind；改后 tear down + reinstall 移动/换色）。
 
 ## 取舍理由
 - **一行（widget 而非多行/多行完整版）**：早期设计有「一级·一行简约版 + 二级·多行完整版」两级，
