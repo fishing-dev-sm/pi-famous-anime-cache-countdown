@@ -20,9 +20,13 @@ DeepSeek 12 小时宏观模式（未声明 TTL、实测缓存存活 ≥ 12 小�
 
 ![deepseek-12h](docs/deepseek-12h.gif)
 
-完整 5 分钟生命周期，压缩到约 12 秒 —— 五个阶段、末秒闪烁，然后是「限界突破」：
+完整 5 分钟生命周期，压缩到约 15 秒 —— 五个阶段、末秒闪烁，然后是过期三阶段消解：
 
 ![five-phases](docs/five-phases.gif)
+
+缓存断掉那一刻的特写：进度条 + 时间自右向左收拢，` 终 OVER 了 ` 呼吸闪烁 3 次，` CACHE EXPIRED 限界突破 ` 永久保留：
+
+![expire-dissolve](docs/expire-dissolve.gif)
 
 待机 → 首次请求点亮：
 
@@ -35,7 +39,10 @@ GIF 由真实扩展代码生成（`demo-frames.mjs` 出帧，经 `player.mjs` �
 - **一行、五个状态**（TTL 五等分）：`NORMAL`（绿）→ `注 CAUTION 意`（黄）→ `危 DANGER 険`（橙）→ `緊 EMERGENCY 急`（红）→ 反相闪烁 EMERGENCY（最后五分之一）
 - 20 格盲文进度条（每格 3 个垂直子级 = 60 步），中央分水岭刻度
 - `MM:SS:cc` 倒计时 + 柔和脉冲 `●`；百分秒自然滚动（83ms 渲染 tick，与 10ms 数字周期不整除）
-- 过期时：`CACHE EXPIRED 限界突破  00:00:00  終 OVER 了`（全红）
+- **过期后分三阶段消解**（逐帧预览：`node preview-expire.mjs --frames`）：
+  1. 「⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀│⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀ 00:00:00」自右向左逐格收拢，直到完全消失（1.2s）
+  2. 「 终 OVER 了 」呼吸闪烁 3 次（700ms/次，一峰比一峰暗）后消失（2.1s）
+  3. 「 CACHE EXPIRED 限界突破 」徽章永久保留，直到下一次请求让倒计时复活
 - **正确的触发语义**（对齐 pi 内置 `cache-warmer`）：倒计时在请求*发出*时（`before_provider_request`）重置，而不是在响应报告缓存使用时；保活重放（`cache_warming_decision`）同样会重置。TTL 取自 `model.promptCache[short|long]`（支持 `PI_CACHE_RETENTION=long`），兜底 300 秒。
 - **礼貌的 UI 公民**：通过 `setWidget` 渲染，从不接管你的 footer；也可选 `footer` 位置——经 `setStatus` 进入 footer 体系（如 pi-slim-footer 插件行），不替换 footer 本身。会话的首次请求之前什么都不显示。
 - **窄终端自适应三档缩略**（收窄丢列、永不截断；盲文格数永远最先砍，`●` 永不丢）：L1 ≤66 格（丢中央刻度 + 盲文 20→10）、L2 ≤50 格（盲文→4 + 状态中英取短 ` 注 CAUT 意 `）、L3 ≤26 格（盲文→2 + 砍 cc）。阈值见 `tui_compact_design.md`，真彩预览 `node preview-compact.mjs`。

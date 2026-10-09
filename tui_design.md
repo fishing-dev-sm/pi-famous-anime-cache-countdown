@@ -49,8 +49,20 @@ DeepSeek 蓝系 `{ main:#3b82f6, hi:#60a5fa, sub:#1d4ed8, tick:#2563eb }`（冷�
   | 3 红 | ` 緊 EMERGENCY 急 ` | 白字 on `#b91c1c` |
   | 4 红闪 | ` 緊 EMERGENCY 急 ` | 400ms 反相闪烁（白字/`#b91c1c`底 ↔ 暗红字/亮红底） |
 
-## 过期状态（remainMs ≤ 0）
-`CACHE EXPIRED 限界突破 ⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀│⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀ 00:00:00 终 OVER 了`（红色定格，空条，时间红色数字不反白，无 ●）。
+## 过期状态（remainMs ≤ 0）——三阶段消解动画（buildExpiredLine）
+时间轴由 `age = -remainMs`（过期后毫秒）驱动：纯函数、无外部状态，因此天然可逆——
+下一次请求让 remainMs 回到正数，动画自动作废、倒计时复活。
+常量：`EXPIRE_COLLAPSE_MS=1200`、`EXPIRE_BREATH_MS=700`、`EXPIRE_BREATHS=3`（总时长 3.3s）。
+
+| 阶段 | 时间 | 行为 |
+|---|---|---|
+| 1 收拢 | 0 → 1.2s | 「⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀│⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀ 00:00:00」自右向左逐格消失（条+空格+时间 = 30 个可见格，40ms/格，与 83ms 渲染 tick 兼容） |
+| 2 呼吸 | 1.2 → 3.3s | 「 终 OVER 了 」底色在 `#b91c1c` ↔ 近黑 `shiftLightness(dangerBg,-20)` 之间振荡 3 次，包络 `(0.5+0.5·cos 2πp)·(1-p/3)` → 一峰比一峰暗，收尾正好全灭 |
+| 3 定格 | 3.3s → | 只剩「 CACHE EXPIRED 限界突破 」徽章，永久保留（无条/无时间/无状态/无 ●） |
+
+实现要点：收拢以「可见格」为单位（每个 atom = 1 列，ANSI 串不会被切坏）；
+`keep = ceil(atoms × (COLLAPSE - age) / COLLAPSE)`，取 `atoms.slice(0, keep)` → 严格前缀，保证右→左。
+逐帧预览：`node preview-expire.mjs --frames`（100ms/帧）；真机验证：`e2e_tui.py f`（场景 F，用 ScreenEmulator 回放 pty 字节流断言屏幕内容）。
 
 ## DeepSeek 12h 宏观模式（buildDeepseekLine）
 DeepSeek 无 `promptCache` 声明、实测 cache ≥12h 存活（2026-10 TTL probe，V4.1 Flash 12h 仍 100% 命中），

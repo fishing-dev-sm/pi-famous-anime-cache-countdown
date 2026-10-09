@@ -1,7 +1,7 @@
 # facc E2E report
 
-- date: 2026-10-07 15:18:18
-- pi: 1.0.4
+- date: 2026-10-09 10:59:12
+- pi: 1.1.0
 
 - [PASS] A1 k3 首次请求后出现倒计时
 - [PASS] A2 待机（请求前）不显示 CACHE 限界
@@ -28,7 +28,7 @@
 - [PASS] B6 不出现五段短逻辑徽章
 - [PASS] C1 请求发出后倒计时出现（25s TTL）
 - [PASS] C2 待机不显示
-- [PASS] C3 五段按序切换 绿→黄→橙→红→限界突破 — {"green": 0.2, "yellow": 3.7, "orange": 8.6, "red": 13.6, "dangerBg": 13.6, "expired": 24.6}
+- [PASS] C3 五段按序切换 绿→黄→橙→红→限界突破 — {"green": 0.2, "yellow": 3.6, "orange": 8.6, "red": 13.6, "dangerBg": 13.6, "expired": 24.6}
 - [PASS] C4 过期定格 CACHE EXPIRED 限界突破
 - [PASS] C5 过期时间 ~25s（20~35s 区间） — expired at 24.6s
 - [PASS] C6 EMERGENCY 段出现 #771c27 深红徽章
@@ -42,3 +42,12 @@
 - [PASS] E3 蓝色徽章配色 #3178c6（与 DeepSeek 同属长期档）
 - [PASS] E4 无倒计时/无 gauge 条/无 ●/无状态徽章
 - [PASS] E5 3s 后仍只有静态徽章（无新倒计时帧）
+- [PASS] F0 过期出现（CACHE EXPIRED 限界突破）
+- [PASS] F1 阶段1：条+时间自右向左收拢（盲文格数单调递减至 0） — cells=[20, 13, 8, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+- [PASS] F2 阶段1：「条+时间」自右向左收拢（每帧残段是上一帧的前缀，最终为空） — segs=['⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀│⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀', '⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀│⣀⣀⣀', '⣀⣀⣀⣀⣀⣀⣀⣀', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '']
+- [PASS] F3 阶段1：收拢在 1.2s±0.7s 完成（条与时间全部消失） — done@1.16s
+- [PASS] F4 阶段2：状态徽章呼吸（底色在实色↔近黑之间振荡、峰值递减） — bgR=[119, 119, 114, 41, 88, 60, 51, 60, 36, 38]
+- [PASS] F5 阶段2：终 OVER 了 呼吸 3 次后在 3.3s±0.7s 消失 — gone@3.49s
+- [PASS] F6 阶段3：4.5s 后屏幕上只剩徽章（无条/无时间/无状态） — late=[(5.53, 0, '', False, None, True), (5.81, 0, '', False, None, True), (6.11, 0, '', False, None, True)]
+- [PASS] F7 阶段3：CACHE EXPIRED 限界突破 徽章每个采样都在屏幕上（直到 6s 末） — badge_ok=[True, True, True, True, True, True, True, True, True, True, True, True, True, True, True, True, True, True, True, True, True]
+- [PASS] F8 可逆：新请求后倒计时复活（CACHE 限界 + NORMAL）

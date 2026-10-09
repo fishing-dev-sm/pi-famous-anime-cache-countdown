@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
 # record_gifs.sh — 在 Xvfb 虚拟屏里用真实 Alacritty（当前配置）播放场景并录成 GIF
-# 用法: ./record_gifs.sh [scene ...]   默认全部三个场景
+# 用法: ./record_gifs.sh [scene ...]   默认全部场景
 set -u
 cd "$(dirname "$0")"
 
 DISP=:99
 SCREEN=900x320x24
 SCENES=("$@")
-[ ${#SCENES[@]} -eq 0 ] && SCENES=(deepseek-12h five-phases standby-wake)
+[ ${#SCENES[@]} -eq 0 ] && SCENES=(deepseek-12h five-phases standby-wake expire-dissolve)
 
 Xvfb $DISP -screen 0 $SCREEN 2>/dev/null &
 XVFB_PID=$!

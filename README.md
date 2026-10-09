@@ -20,9 +20,13 @@ DeepSeek 12 h macro mode (undocumented, best-effort cache that empirically lives
 
 ![deepseek-12h](docs/deepseek-12h.gif)
 
-Full 5-minute lifecycle, compressed to ~12 s — five phases, final-second flash, then 限界突破:
+Full 5-minute lifecycle, compressed to ~15 s — five phases, final-second flash, then the expiry dissolve:
 
 ![five-phases](docs/five-phases.gif)
+
+Close-up of what happens the moment the cache dies: the gauge + clock collapse right → left, ` 终 OVER 了 ` breathes 3 times, and ` CACHE EXPIRED 限界突破 ` stays:
+
+![expire-dissolve](docs/expire-dissolve.gif)
 
 Standby → first request lights it up:
 
@@ -35,7 +39,10 @@ GIFs are produced from the real extension code (`demo-frames.mjs` frames, played
 - **One line, five states** (TTL split into fifths): `NORMAL` (green) → `注 CAUTION 意` (yellow) → `危 DANGER 険` (orange) → `緊 EMERGENCY 急` (red) → inverted-flash EMERGENCY (final fifth)
 - 20-cell braille gauge (3 vertical sub-levels per cell = 60 steps), center tick
 - `MM:SS:cc` countdown with a soft-pulsing `●`; the centiseconds roll naturally (83 ms render tick, non-divisible by the 10 ms digit period)
-- On expiry: `CACHE EXPIRED 限界突破  00:00:00  終 OVER 了` (all red)
+- **On expiry: three-stage dissolve** (preview every frame with `node preview-expire.mjs --frames`):
+  1. `⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀│⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀ 00:00:00` collapses cell-by-cell **right → left** until nothing is left (1.2 s)
+  2. ` 终 OVER 了 ` **breathes 3 times** (700 ms per cycle, each peak dimmer than the last) and then disappears (2.1 s)
+  3. ` CACHE EXPIRED 限界突破 ` **stays forever** — until the next request resets the TTL and the countdown comes back to life
 - **Correct trigger semantics** (mirrors pi's built-in `cache-warmer`): the countdown resets when a request is *sent* to the provider (`before_provider_request`), not when a response reports cache usage; warming replays (`cache_warming_decision`) also reset it. TTL comes from `model.promptCache[short|long]` (`PI_CACHE_RETENTION=long` supported), falling back to 300 s.
 - **Polite UI citizen**: rendered via `setWidget`, never takes over your footer; optional `footer` placement routes through `setStatus` into the footer's extension-status system (e.g. a pi-slim-footer plugin line) instead of replacing it. Nothing is shown until the first request of the session.
 - **Three width-adaptive compact tiers** (drop columns on shrink, never truncate; braille cells always go first, `●` never dropped): L1 ≤66 cells (central tick dropped, gauge 20→10), L2 ≤50 cells (gauge→4 + shortened bilingual status ` 注 CAUT 意 `), L3 ≤26 cells (gauge→2 + centiseconds dropped). Thresholds in `tui_compact_design.md`, true-color preview `node preview-compact.mjs`.

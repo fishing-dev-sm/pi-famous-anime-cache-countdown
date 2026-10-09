@@ -4,7 +4,7 @@ import { createRequire } from "node:module";
 const require = createRequire("/home/sim/.pi/agent/install/releases/1.0.4/node_modules/");
 const { createJiti } = require("jiti");
 const jiti = createJiti(import.meta.url);
-const { buildCountdownLine, buildDeepseekLine, buildInfiniteLine } = await jiti.import(new URL("./index.ts", import.meta.url).href);
+const { buildCountdownLine, buildDeepseekLine, buildInfiniteLine, buildExpiredLine } = await jiti.import(new URL("./index.ts", import.meta.url).href);
 
 const RESET = "\x1b[0m";
 // 与 preview.mjs 相同的真色上色（fg 始终输出；bg 可选）
@@ -50,6 +50,24 @@ console.log(buildInfiniteLine(style), " ", "本地 ∞（仅徽章，无条/∞/
 	);
 }
 
+// 过期三阶段消解动画（buildExpiredLine：remainMs 传负数 = 过期后经过的毫秒）
+// 时间轴：0→1200ms 阶段1 条+时间自右向左收拢；1200→3300ms 阶段2 状态徽章呼吸 3 次（700ms/次）；≥3300ms 阶段3 只剩徽章
+const expCases = [
+	{ age: 0, label: "阶段1 起点：条+时间+状态全在" },
+	{ age: 300, label: "阶段1：右侧收掉 1/4" },
+	{ age: 600, label: "阶段1：收掉一半（时间剩 00:0" },
+	{ age: 900, label: "阶段1：只剩左侧条" },
+	{ age: 1200, label: "阶段1 结束 / 呼吸 1 峰值（env=1.00）：条+时间归零" },
+	{ age: 1550, label: "阶段2：呼吸 1 谷底（env=0，全黑）" },
+	{ age: 1900, label: "阶段2：呼吸 2 峰值（env=0.67，逐次变弱）" },
+	{ age: 2600, label: "阶段2：呼吸 3 峰值（env=0.33，最弱）" },
+	{ age: 2950, label: "阶段2：呼吸 3 谷底" },
+	{ age: 3300, label: "阶段2 结束：状态消失，只剩徽章" },
+	{ age: 9000, label: "阶段3：徽章永久保留" },
+];
+for (const c of expCases) console.log(buildExpiredLine(-c.age, style), " ", c.label);
+for (const t of ["L1", "L2", "L3"]) console.log(buildExpiredLine(-600, style, t), " ", `过期 600ms @ ${t} 档`);
+
 // 宽度校验（CJK 按 2 列）
 function charW(c) {
 	const cp = c.codePointAt(0);
@@ -63,3 +81,11 @@ function charW(c) {
 const vw = (s) => { let w = 0; for (const c of s.replace(/\x1b\[[0-9;]*m/g, "")) w += charW(c); return w; };
 console.log("\nvisible width:", cases.map((c) => vw(buildCountdownLine(c.remain, 300_000, c.now, style))).join(", "));
 console.log("deepseek width:", dsCases.map((c) => vw(buildDeepseekLine(c.remain, 12 * 3600 * 1000, c.hit, style))).join(", "));
+console.log("expired width:", expCases.map((c) => vw(buildExpiredLine(-c.age, style))).join(", "));
+const expWidths = expCases.map((c) => vw(buildExpiredLine(-c.age, style)));
+const badgeW = vw(" CACHE EXPIRED 限界突破 ");
+console.log(
+	"expired 单调不增:", expWidths.every((w, i) => i === 0 || w <= expWidths[i - 1]),
+	"| 末态宽度=徽章宽度:", expWidths[expWidths.length - 1] === badgeW,
+	`(${badgeW})`,
+);

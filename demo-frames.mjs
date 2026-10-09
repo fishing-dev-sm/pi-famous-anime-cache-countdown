@@ -59,10 +59,14 @@ for (let i = 0; i < 40; i++) {
 	scene(buildCountdownLine(remain, 300_000, now, style));
 	now += 100;
 }
-// C: 限界突破（25 帧定格）
-for (let i = 0; i < 25; i++) {
-	scene(buildCountdownLine(-1, 300_000, now, style));
-	now += 400;
+// C: 限界突破 → 三阶段消解（真实时间轴 100ms/帧：收拢 1.2s → 呼吸×3 2.1s → 徽章定格）
+for (let i = 0; i <= 33; i++) {
+	scene(buildCountdownLine(-i * 100, 300_000, now, style));
+	now += 100;
+}
+for (let i = 0; i < 10; i++) {
+	scene(buildCountdownLine(-3400 - i * 200, 300_000, now, style));
+	now += 200;
 }
 
 // ── 场景 3: 待机 → 发消息瞬间点亮（3s，展示"待机零渲染"行为）───────────────
@@ -71,3 +75,19 @@ const sceneBlank = () => out([TITLE, "", "", "", EDITOR, "", FOOT1, FOOT2]);
 for (let i = 0; i < 12; i++) sceneBlank(); // 待机：无倒计时行
 for (let i = 0; i < 12; i++) scene(buildCountdownLine(299_000 - i * 1000, 300_000, now + i * 100, style)); // 发消息瞬间点亮
 for (let i = 0; i < 6; i++) scene(buildCountdownLine(287_000 - i * 1000, 300_000, now + 1200 + i * 100, style));
+
+// ── 场景 4: 过期三阶段消解动画（红 EMERGENCY → 收拢 → 呼吸×3 → 徽章定格）─────
+// 时间轴真实（100ms/帧），与 buildExpiredLine 的 age = -remainMs 一致
+out([dim("scene: expire-dissolve")], 1);
+for (let i = 0; i < 6; i++) {
+	scene(buildCountdownLine(5_000 - i * 800, 300_000, now, style)); // 过期前：红 EMERGENCY
+	now += 100;
+}
+for (let i = 0; i <= 33; i++) {
+	scene(buildCountdownLine(-i * 100, 300_000, now, style)); // 阶段1+2（0 → 3.3s）
+	now += 100;
+}
+for (let i = 0; i < 15; i++) {
+	scene(buildCountdownLine(-3400 - i * 100, 300_000, now, style)); // 阶段3：徽章永久定格
+	now += 100;
+}

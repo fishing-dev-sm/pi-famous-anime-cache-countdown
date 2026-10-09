@@ -1,6 +1,6 @@
 {
 	"name": "pi-flcc",
-	"version": "1.2.0",
+	"version": "1.3.0",
 	"description": "Anime-style prompt-cache TTL countdown widget for pi (Anthropic 5min five-phase + DeepSeek 12h macro + local/self-hosted ∞ mode)",
 	"type": "module",
 	"main": "index.ts",
@@ -9,6 +9,7 @@
 		"index.ts",
 		"preview.mjs",
 		"preview-compact.mjs",
+		"preview-expire.mjs",
 		"test-render.mjs",
 		"tui_design.md",
 		"tui_compact_design.md",

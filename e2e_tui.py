@@ -5,6 +5,9 @@
   A: k3 回归（不得误判 deepseek）+ 待机不显示 + /facc 菜单
   B: DeepSeek 默认模型 12h 宏观模式（HH:MM:SS + 長 EXTERNAL 期 + HIT%）
   C: 25s 短 TTL 假模型，真实走完 绿→黄→橙→红→红闪→限界突破 全周期
+  D: 窄宽度自适应缩略档 L1/L2/L3
+  E: 本地/自托管 API ∞ 模式
+  F: 6s TTL 假模型 —— 限界突破三阶段消解动画（收拢/呼吸/定格）+ 可逆性
 
 用法: python3 e2e_tui.py            # 全部场景
       python3 e2e_tui.py a|b|c      # 单个场景
@@ -16,6 +19,7 @@ from pathlib import Path
 PROJ = "/home/sim/code/famous-anime-cache-countdown"
 REAL_AGENT = os.path.expanduser("~/.pi/agent")
 OUT = Path(PROJ) / "docs" / "e2e"
+PI_VERSION = subprocess.run(["pi", "--version"], capture_output=True, text=True).stdout.strip()
 OUT.mkdir(parents=True, exist_ok=True)
 
 # 关键 ANSI 指纹（与 index.ts 色号一致）
@@ -30,6 +34,80 @@ DANGER_BG = "48;2;119;28;39"     # #771c27（theme1 红 -18% 亮度）
 GREEN_BG2 = "48;2;34;197;94"     # #22c55e NORMAL（theme2 原版绿）
 
 
+class ScreenEmulator:
+    """极简终端仿真（只跟踪字符→格子，忽略 SGR 颜色）。
+
+    为什么需要：pi TUI 是「绝对光标定位 + 只重绘变化格子」的增量渲染，
+    pty 字节流的增量里看不到未变化的格子（例如收拢中已存在的左侧数字）。
+    要断言「屏幕上此刻真正显示什么」，必须把整段字节流回放成屏幕。
+    """
+    _CSI = re.compile(r"\x1b\[([0-9;?]*)([a-zA-Z@`])")
+    _OSC = re.compile(r"\x1b\][^\x07\x1b]*(?:\x07|\x1b\\\\)")
+
+    def __init__(self):
+        self.grid = {}      # (row, col) -> char
+        self.cur = [0, 0]   # 0-based row, col
+
+    def reset(self):
+        self.grid.clear()
+        self.cur = [0, 0]
+
+    def _num(self, params, idx=0, default=1):
+        parts = [p for p in params.split(";") if p.isdigit()]
+        return int(parts[idx]) if len(parts) > idx else default
+
+    def _csi(self, params, cmd):
+        r, c = self.cur
+        if cmd in ("H", "f"):
+            self.cur = [max(0, self._num(params, 0) - 1), max(0, self._num(params, 1) - 1)]
+        elif cmd == "A": self.cur = [max(0, r - self._num(params)), c]
+        elif cmd == "B": self.cur = [r + self._num(params), c]
+        elif cmd == "C": self.cur = [r, c + self._num(params)]
+        elif cmd == "D": self.cur = [r, max(0, c - self._num(params))]
+        elif cmd == "G": self.cur = [r, max(0, self._num(params) - 1)]
+        elif cmd == "d": self.cur = [max(0, self._num(params) - 1), c]
+        elif cmd == "K":
+            mode = self._num(params, 0, 0)
+            for k in [k for (rr, k) in self.grid if rr == r]:
+                if mode == 2 or (mode == 0 and k >= c) or (mode == 1 and k <= c):
+                    del self.grid[(r, k)]
+        elif cmd == "J":
+            self.grid.clear()
+        # 其余（m=SGR / s=保存光标 / 私有 ?序列等）一律忽略
+
+    def feed(self, text):
+        i, n = 0, len(text)
+        while i < n:
+            ch = text[i]
+            if ch == "\x1b":
+                mo = self._CSI.match(text, i)
+                if mo:
+                    self._csi(mo.group(1), mo.group(2)); i = mo.end(); continue
+                mo = self._OSC.match(text, i)
+                if mo:
+                    i = mo.end(); continue
+                i += 1; continue
+            if ch == "\r": self.cur[1] = 0; i += 1; continue
+            if ch == "\n": self.cur[0] += 1; i += 1; continue
+            if ch == "\t": self.cur[1] += 8 - self.cur[1] % 8; i += 1; continue
+            if ch < " ": i += 1; continue
+            self.grid[(self.cur[0], self.cur[1])] = ch
+            self.cur[1] += 1
+            i += 1
+
+    def line(self, row):
+        return "".join(v for k, v in sorted((k, v) for (rr, k), v in self.grid.items() if rr == row))
+
+    def find_line(self, needle):
+        """返回屏幕上包含 needle 的那一行（取行号最大者 = 最新一次绘制位置）。"""
+        hit = None
+        for rr in sorted({rr for (rr, _) in self.grid}):
+            t = self.line(rr)
+            if needle in t:
+                hit = t
+        return hit
+
+
 class PtySession:
     def __init__(self, argv, env, log_path, cols=100, rows=30):
         self.master, slave = pty.openpty()
@@ -39,6 +117,7 @@ class PtySession:
                                      env=e, cwd=PROJ, close_fds=True)
         os.close(slave)
         self.buf = b""
+        self.screen = ScreenEmulator()
         self.log = open(log_path, "wb")
 
     def pump(self, timeout=0.2):
@@ -51,6 +130,7 @@ class PtySession:
             self.buf += data
             self.log.write(data)
             self.log.flush()
+            self.screen.feed(data.decode("utf-8", errors="replace"))
         return True
 
     def text(self):
@@ -97,6 +177,7 @@ class PtySession:
         self.proc.send_signal(signal.SIGWINCH)
         time.sleep(1.0)
         self.drain()
+        self.screen.reset()  # resize 后旧坐标失效，只保留 resize 之后的重绘
 
     def close(self):
         try:
@@ -275,7 +356,7 @@ def scenario_c():
         }
     }))
     (tmp / "settings.json").write_text(json.dumps({
-        "lastChangelogVersion": "1.0.4",
+        "lastChangelogVersion": PI_VERSION,
         "defaultProvider": "e2e25", "defaultModel": "e2e-25s",
     }))
 
@@ -386,7 +467,7 @@ def scenario_e():
         }
     }))
     (tmp / "settings.json").write_text(json.dumps({
-        "lastChangelogVersion": "1.0.4",
+        "lastChangelogVersion": PI_VERSION,
         "defaultProvider": "e2elocal", "defaultModel": "qwen-local",
     }))
 
@@ -419,20 +500,135 @@ def scenario_e():
         shutil.rmtree(tmp, ignore_errors=True)
 
 
-SCENARIOS = {"a": scenario_a, "b": scenario_b, "c": scenario_c, "d": scenario_d, "e": scenario_e}
-which = sys.argv[1:] or ["a", "b", "c", "d", "e"]
-for w in which:
-    try:
-        SCENARIOS[w]()
-    except Exception as e:
-        check(f"scenario {w} 运行异常", False, repr(e))
+# ── 场景 F：限界突破三阶段消解动画（6s TTL 假模型，真实时间走到过期）─────────
+# 验证：阶段1 条+时间自右向左收拢 → 阶段2 状态徽章呼吸×3 后消失 → 阶段3 徽章永久定格
+#       + 可逆性：新请求让倒计时复活（动画作废）
+EXPIRE_TTL_SEC = 6
 
-lines = ["# facc E2E report", "", f"- date: {time.strftime('%Y-%m-%d %H:%M:%S')}",
-         f"- pi: {subprocess.run(['pi', '--version'], capture_output=True, text=True).stdout.strip()}",
-         ""]
-for name, ok, detail in results:
-    lines.append(f"- [{'PASS' if ok else 'FAIL'}] {name}" + (f" — {detail}" if detail else ""))
-(OUT / "report.md").write_text("\n".join(lines) + "\n")
-failed = [n for n, ok, _ in results if not ok]
-print(f"\n{'ALL PASS' if not failed else 'FAILED: ' + ', '.join(failed)}  (report: {OUT/'report.md'})")
-sys.exit(1 if failed else 0)
+
+def scenario_f():
+    print("scenario F: expire dissolve animation (6s TTL, isolated agent dir)")
+    seed_config()
+    tmp = Path("/tmp/facc-e2e-expire")
+    shutil.rmtree(tmp, ignore_errors=True)
+    tmp.mkdir(parents=True)
+    auth = json.load(open(f"{REAL_AGENT}/auth.json"))
+    (tmp / "auth.json").write_text(json.dumps({"deepseek": auth["deepseek"]}))
+    (tmp / "models.json").write_text(json.dumps({
+        "providers": {
+            "e2eexp": {
+                "baseUrl": "https://api.deepseek.com",
+                "api": "openai-completions",
+                "apiKey": auth["deepseek"]["key"],
+                "models": [{
+                    "id": "e2e-6s", "name": "E2E 6s TTL",
+                    "api": "openai-completions",
+                    "baseUrl": "https://api.deepseek.com",
+                    "provider": "e2eexp",
+                    "reasoning": False,
+                    "input": ["text"],
+                    "cost": {"input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0},
+                    "contextWindow": 128000, "maxTokens": 8192,
+                    "promptCache": {"short": EXPIRE_TTL_SEC},
+                }],
+            }
+        }
+    }))
+    (tmp / "settings.json").write_text(json.dumps({
+        "lastChangelogVersion": PI_VERSION,
+        "defaultProvider": "e2eexp", "defaultModel": "e2e-6s",
+    }))
+
+    s = boot(["-e", f"{PROJ}/index.ts", "--model", "e2eexp/e2e-6s"],
+             {"PI_CODING_AGENT_DIR": str(tmp)}, "f-expire.log")
+    try:
+        s.send("hi\r")
+        check("F0 过期出现（CACHE EXPIRED 限界突破）", s.wait_for("CACHE EXPIRED 限界突破", timeout=60))
+
+        # 逐段采样：把 pty 字节流回放成屏幕（ScreenEmulator），读「此刻屏幕上的 widget 行」
+        # 颜色只能从原始字节流取（仿真器不存 SGR），取最后一次出现的状态徽章底色
+        samples = []  # (age_s, cells, seg, has_over, status_bgR, badge_ok)
+        t0 = time.time()
+        while time.time() - t0 < 6.0:
+            s.drain(max_s=0.25, quiet=0.1)
+            win = s.screen.find_line("CACHE EXPIRED") or ""
+            raw = s.text()
+            j = raw.rfind("CACHE EXPIRED")
+            bg = re.findall(r"48;2;(\d+);(\d+);(\d+)m终 OVER 了", raw[j:j + 400]) if j >= 0 else []
+            i2 = win.find("限界突破")
+            j2 = win.find("终 OVER")
+            seg = win[i2 + 4:j2 if j2 >= 0 else len(win)].strip()  # 徽章与状态之间的「条+时间」段
+            samples.append((
+                round(time.time() - t0, 2),
+                len(re.findall(r"[\u2800-\u28ff]", win)),  # 盲文格数（收拢中递减）
+                seg,                                         # 条+时间残段（应为上一帧的前缀）
+                "OVER" in win,
+                int(bg[-1][0]) if bg else None,
+                "CACHE EXPIRED 限界突破" in win,
+            ))
+        print("  samples:", samples)
+        got = samples
+        cells_seq = [x[1] for x in got]
+        check("F1 阶段1：条+时间自右向左收拢（盲文格数单调递减至 0）",
+              cells_seq[0] >= 20 and 0 in cells_seq and cells_seq == sorted(cells_seq, reverse=True),
+              f"cells={cells_seq}")
+        segs = [x[2] for x in got]
+        prefix_ok = all(b == a[:len(b)] for a, b in zip(segs, segs[1:]) if a)  # 每帧都是上一帧的前缀
+        check("F2 阶段1：「条+时间」自右向左收拢（每帧残段是上一帧的前缀，最终为空）",
+              prefix_ok and segs[0] and segs[-1] == "",
+              f"segs={segs}")
+        first_empty_seg = next((x[0] for x in got if x[1] == 0 and not x[2]), None)
+        check("F3 阶段1：收拢在 1.2s±0.7s 完成（条与时间全部消失）",
+              first_empty_seg is not None and 0.5 <= first_empty_seg <= 1.9, f"done@{first_empty_seg}s")
+        bgs = [x[4] for x in got if x[4] is not None]
+        check("F4 阶段2：状态徽章呼吸（底色在实色↔近黑之间振荡、峰值递减）",
+              len(set(bgs)) >= 4 and max(bgs) <= 119 and min(bgs) < 45 and bgs[0] > bgs[-1],
+              f"bgR={bgs}")
+        first_no_over = next((x[0] for x in got if not x[3]), None)
+        check("F5 阶段2：终 OVER 了 呼吸 3 次后在 3.3s±0.7s 消失",
+              first_no_over is not None and 2.6 <= first_no_over <= 4.2, f"gone@{first_no_over}s")
+        late = [x for x in got if x[0] >= 4.5]
+        check("F6 阶段3：4.5s 后屏幕上只剩徽章（无条/无时间/无状态）",
+              late and all(x[1] == 0 and x[2] == "" and not x[3] for x in late),
+              f"late={late[-3:] if late else []}")
+        check("F7 阶段3：CACHE EXPIRED 限界突破 徽章每个采样都在屏幕上（直到 6s 末）",
+              all(x[5] for x in got), f"badge_ok={[x[5] for x in got]}")
+
+        # 可逆性：新请求重置 cache → 动画作废、倒计时复活
+        mark = len(s.buf)
+        s.send("hi again\r")
+        ok = s.wait_for("CACHE 限界", timeout=60)
+        time.sleep(1.0)
+        s.drain()
+        p = re.sub(r"\x1b\[[0-9;?]*[a-zA-Z]", "", s.buf[mark:].decode("utf-8", errors="replace"))
+        check("F8 可逆：新请求后倒计时复活（CACHE 限界 + NORMAL）", ok and " CACHE 限界 " in p and " NORMAL " in p)
+    finally:
+        s.close()
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
+SCENARIOS = {"a": scenario_a, "b": scenario_b, "c": scenario_c, "d": scenario_d, "e": scenario_e,
+             "f": scenario_f}
+
+
+def main():
+    which = sys.argv[1:] or sorted(SCENARIOS)
+    for w in which:
+        try:
+            SCENARIOS[w]()
+        except Exception as e:
+            check(f"scenario {w} 运行异常", False, repr(e))
+
+    lines = ["# facc E2E report", "", f"- date: {time.strftime('%Y-%m-%d %H:%M:%S')}",
+             f"- pi: {subprocess.run(['pi', '--version'], capture_output=True, text=True).stdout.strip()}",
+             ""]
+    for name, ok, detail in results:
+        lines.append(f"- [{'PASS' if ok else 'FAIL'}] {name}" + (f" — {detail}" if detail else ""))
+    (OUT / "report.md").write_text("\n".join(lines) + "\n")
+    failed = [n for n, ok, _ in results if not ok]
+    print(f"\n{'ALL PASS' if not failed else 'FAILED: ' + ', '.join(failed)}  (report: {OUT/'report.md'})")
+    return 1 if failed else 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

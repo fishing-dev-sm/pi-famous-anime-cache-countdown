@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
  * player.mjs <scene> — 在真终端里播放 demo-frames.mjs 生成的某个场景
- * 用法：node player.mjs deepseek-12h|five-phases|standby-wake
+ * 用法：node player.mjs deepseek-12h|five-phases|standby-wake|expire-dissolve
  * 每帧清屏重绘，播完停 800ms 退出（供 alacritty -e 使用，退出即关窗）。
  */
 import { execFile } from "node:child_process";
@@ -28,7 +28,8 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 process.stdout.write("\x1b[?25l\x1b[2J\x1b[H"); // 隐藏光标 + 清屏
 await sleep(600);
 for (const f of frames) {
-	process.stdout.write("\x1b[H" + f.lines.join("\r\n") + "\x1b[J");
+	// 每行末尾 \x1b[K 擦到行尾：动画后期行变短时不留上一帧残影（过期消解会缩行）
+	process.stdout.write("\x1b[H" + f.lines.map((l) => l + "\x1b[K").join("\r\n") + "\x1b[J");
 	await sleep(f.dur);
 }
 await sleep(800);
