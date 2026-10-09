@@ -5,6 +5,10 @@
  * 视觉与本目录 preview.mjs 的「一行简约版」一致：
  *   [反白徽章 CACHE 限界] [20 格 braille 条(垂直3级+中央tick)] [反白 MM:SS:cc] [五段状态徽章]
  *   状态（TTL 五等分）：NORMAL → 注 CAUTION 意 → 危 DANGER 険 → 緊 EMERGENCY 急 →（末段反相闪烁）
+ * 过期（cache5分钟倒计时到了）后分三阶段消解（buildExpiredLine，时间轴 = -remainMs）：
+ *   1) 「⣀…│⣀… 00:00:00」自右向左逐格收拢至消失（1.2s）
+ *   2) 「 终 OVER 了 」呼吸闪烁 3 次后消失（2.1s）
+ *   3) 「 CACHE EXPIRED 限界突破 」徽章永久保留，直到下一次请求重置
  * 窄宽度自适应三档缩略（tui_compact_design.md v3，preview-compact.mjs 预览）：
  *   L1 ≤60格：丢中央 tick + 盲文 20→10；L2 ≤44格：盲文→4 + 状态中英取短（注 CAUT 意）；
  *   L3 ≤26格：盲文→2 + cc/限界 才丢。铁律：盲文格数永远最先砍，● 永不丢。
@@ -240,6 +244,74 @@ function buildTime(sec: number, centi: number, P: Phase, withCc: boolean, style:
 	return digit(" " + mm + ":" + ss + ":" + cc[0]) + style(cc[1], P.sub, P.main) + digit(" ");
 }
 
+// ══ 限界突破消解动画（过期后三阶段，纯函数）══════════════════════════════════
+// 时间轴由 age = -remainMs（过期后经过的毫秒）驱动 → 不需要任何外部状态，
+// 且天然可逆：下一次请求让 remainMs 回到正数，动画自动作废、倒计时恢复。
+//   阶段1 [0, COLLAPSE)          ：「⣀…│⣀… 00:00:00」自右向左逐格收拢直到消失
+//   阶段2 [COLLAPSE, +3×BREATH)  ：「 终 OVER 了 」呼吸闪烁 3 次（峰值逐次变暗）后消失
+//   阶段3 之后                    ：只保留「 CACHE EXPIRED 限界突破 」徽章（永久定格）
+const EXPIRE_COLLAPSE_MS = 1200; // 阶段1 时长（30 格 ÷ 1200ms ≈ 40ms/格，与 83ms 渲染 tick 兼容）
+const EXPIRE_BREATH_MS = 700; // 阶段2 单次呼吸周期
+const EXPIRE_BREATHS = 3; // 阶段2 呼吸次数
+
+/** RGB 线性插值（#rrggbb × #rrggbb → #rrggbb），t=0 → a，t=1 → b。呼吸淡出用。 */
+function mixHex(a: string, b: string, t: number): string {
+	const [r1, g1, b1] = hexToRgb(a);
+	const [r2, g2, b2] = hexToRgb(b);
+	const m = (x: number, y: number) => Math.round(x + (y - x) * Math.max(0, Math.min(1, t)));
+	return `#${[m(r1, r2), m(g1, g2), m(b1, b2)].map((v) => v.toString(16).padStart(2, "0")).join("")}`;
+}
+
+/** 阶段2：状态徽章呼吸。env=1 实色 → env=0 与终端底色同化（不可见）；3 次后返回 ""（消失）。 */
+function buildExpireStatus(ageMs: number, tier: Tier, style: StyleFn): string {
+	const text = tier === "full" ? "终 OVER 了" : tier === "L1" ? " 终 OVER 了 " : tier === "L3" ? " 终 " : " 终了 ";
+	const start = EXPIRE_COLLAPSE_MS;
+	const end = start + EXPIRE_BREATHS * EXPIRE_BREATH_MS;
+	if (ageMs >= end) return "";
+	let env = 1;
+	if (ageMs >= start) {
+		const p = (ageMs - start) / EXPIRE_BREATH_MS; // 0..3
+		// 余弦包络（1→0→1→0→1→0→1）× 线性衰减（1→0）= 三次呼吸一峰比一峰暗，收尾正好全灭
+		env = (0.5 + 0.5 * Math.cos(2 * Math.PI * p)) * (1 - p / EXPIRE_BREATHS);
+	}
+	const off = shiftLightness(ACTIVE.dangerBg, -20); // 近黑（带一点红相）≈ 终端底色，淡出终点
+	return style(text, mixHex(off, contrastFg(ACTIVE.dangerBg), env), mixHex(off, ACTIVE.dangerBg, env));
+}
+
+/**
+ * 过期态渲染（纯函数）。age = -remainMs 决定动画阶段；tier 同 buildCountdownLine。
+ * 收拢以「可见格」为单位（每个 atom = 1 列），故 ANSI 串不会被切坏。
+ */
+export function buildExpiredLine(remainMs: number, style: StyleFn, tier: Tier = "full"): string {
+	const cells = TIER_GAUGE[tier];
+	const withTick = tier === "full";
+	const P3 = ACTIVE.phases[3];
+	const age = Math.max(0, -remainMs);
+
+	// 阶段3：徽章永不参与消解
+	const badge = style(
+		tier === "full" ? " CACHE EXPIRED 限界突破 " : tier === "L3" ? " 突破 " : " CACHE 限界突破 ",
+		contrastFg(P3.main),
+		P3.main,
+	);
+
+	// 阶段1：空条 + 中央 tick + 时间 → 逐格自右向左收拢
+	const atoms: string[] = [];
+	for (let i = 0; i < cells; i++) {
+		atoms.push(style("⣀", P3.main));
+		if (withTick && i === cells / 2 - 1) atoms.push(style("│", P3.tick));
+	}
+	atoms.push(" ");
+	for (const ch of tier === "L3" ? "00:00" : "00:00:00") atoms.push(style(ch, P3.main));
+	const keep = Math.max(0, Math.ceil((atoms.length * (EXPIRE_COLLAPSE_MS - age)) / EXPIRE_COLLAPSE_MS));
+	const seg = keep > 0 ? atoms.slice(0, keep).join("") : "";
+
+	// 阶段2：状态徽章呼吸 3 次后消失
+	const status = buildExpireStatus(age, tier, style);
+
+	return [badge, seg, status].filter((s) => s !== "").join(" ");
+}
+
 /**
  * 构建一行倒计时（纯函数，可测试）。tier = "full" | "L1" | "L2" | "L3"（默认 full）。
  * 布局：反白徽章 + 空格 + braille条(格数随档) + ● + 反白时间 + 状态徽章
@@ -247,22 +319,9 @@ function buildTime(sec: number, centi: number, P: Phase, withCc: boolean, style:
 export function buildCountdownLine(remainMs: number, totalMs: number, nowMs: number, style: StyleFn, tier: Tier = "full"): string {
 	const cells = TIER_GAUGE[tier];
 	const withTick = tier === "full"; // 中央 tick 仅完整版（L1 起丢）
-	const P3 = ACTIVE.phases[3];
 
-	// 限界突破（过期）：红色定格 —— 空条 + 红色时间不反白 + 无 ●（「死了才不闪」）
-	if (remainMs <= 0) {
-		const bar = buildBar(cells, 0, totalMs / 1000, P3, nowMs, withTick, style);
-		if (tier === "full") {
-			const titleBadge = style(" CACHE EXPIRED 限界突破 ", contrastFg(P3.main), P3.main);
-			return `${titleBadge} ${bar} ${style("00:00:00", P3.main)} ${style("终 OVER 了", contrastFg(ACTIVE.dangerBg), ACTIVE.dangerBg)}`;
-		}
-		if (tier === "L3") {
-			return `${style(" 突破 ", contrastFg(P3.main), P3.main)} ${bar} ${style("00:00", P3.main)} ${style(" 终 ", contrastFg(ACTIVE.dangerBg), ACTIVE.dangerBg)}`;
-		}
-		const badge = style(" CACHE 限界突破 ", contrastFg(P3.main), P3.main);
-		const status = tier === "L1" ? " 终 OVER 了 " : " 终了 ";
-		return `${badge} ${bar} ${style("00:00:00", P3.main)} ${style(status, contrastFg(ACTIVE.dangerBg), ACTIVE.dangerBg)}`;
-	}
+	// 限界突破（过期）：三阶段消解动画（收拢 → 呼吸 → 徽章定格）；无 ●（「死了才不闪」）
+	if (remainMs <= 0) return buildExpiredLine(remainMs, style, tier);
 
 	const totalSec = totalMs / 1000;
 	const sec = Math.floor(Math.max(0, remainMs) / 1000);
